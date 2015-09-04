@@ -27,23 +27,13 @@
 /* #define DEBUG */
 
 /* Macros */
-#define MAXFDNUM 1024
-#define ECHO_PORT 9993
+/* the number of available file descriptors is typically 1024 */
+#define ECHO_PORT 9999
 #define BUF_SIZE 4096
 
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))
 /* remove a wrap node from the linked list
- * prevFdWrap == NULL only if loopFdWrap == head */
-#define REMOVE_LINKEDLIST_NODE_NO_FREE(loopFdWrap, prevFdWrap, head)	\
-	if(prevFdWrap) {													\
-		prevFdWrap -> next = loopFdWrap -> next;						\
-		loopFdWrap = prevFdWrap -> next;								\
-	}																	\
-	else {																\
-		head = loopFdWrap -> next;										\
-		loopFdWrap = head;												\
-	}           				
-	
+ * prevFdWrap == NULL only if loopFdWrap == head */	
 #define REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, head)			\
 	if(prevFdWrap) {													\
 		prevFdWrap -> next = loopFdWrap -> next;						\
@@ -62,6 +52,14 @@ typedef void (*sighandler_t)(int);
 sighandler_t Signal(int signum, sighandler_t handler); 
 int close_socket(int sock);
 
+#ifdef DEBUG
+void sigint_handler(int sig) {
+	/* do nothing, just test the performance when being interrupted */
+    return;
+}
+#endif
+
+
 struct fdWrap {
 	int fd;
 	int bufSize;
@@ -79,8 +77,8 @@ int main(int argc, char* argv[])
     struct timeval timeout;
     int nfds = 0;
     int selectRet;
-  	/* close the socket when no reference exits */
-    char readValid[MAXFDNUM], writeValid[MAXFDNUM];
+  	/* readValid, writeValid are flags to mark when to release resource */
+    fd_set readValid, writeValid;
     struct fdWrap * tempFdWrap, * loopFdWrap, * prevFdWrap;
     
     fprintf(stdout, "----- Echo Server -----\n");	
@@ -88,12 +86,15 @@ int main(int argc, char* argv[])
 	/* init process */
 	readHead = NULL;
 	writeHead = NULL;
-    memset(readValid, 0, MAXFDNUM);
-    memset(writeValid, 0, MAXFDNUM);
+	FD_ZERO(&readValid);
+	FD_ZERO(&writeValid);
     
     /* ignore ctrl + c */
+#ifndef DEBUG
     Signal(SIGINT, SIG_IGN);
-    
+#else
+	Signal(SIGINT, sigint_handler);
+#endif
     /* all networked programs must create a socket */
     if ((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
     {
@@ -123,9 +124,9 @@ int main(int argc, char* argv[])
 
     /* finally, loop waiting for input and then write it back */
     
-    
-    timeout.tv_sec = 200;
-    timeout.tv_usec = 100;
+    /* not really needed currently, choose a random number*/
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
     while (1)
     {
     	/* init fd sets */
@@ -141,7 +142,7 @@ int main(int argc, char* argv[])
     	 * add all write fd to set */ 
     	loopFdWrap = readHead;
     	while(loopFdWrap) {
-    		if(!writeValid[loopFdWrap -> fd]) {
+    		if(!FD_ISSET(loopFdWrap -> fd, &writeValid)) {
     			nfds = MAX(nfds, loopFdWrap -> fd);
     			FD_SET(loopFdWrap -> fd, &readset); 
     		}
@@ -179,18 +180,21 @@ int main(int argc, char* argv[])
     				readHead -> fd = client_sock;
     				readHead -> bufSize = 0;
     				/* conn just established, refer equals 1 */
-    				readValid[client_sock] = 1;
+    				FD_SET(client_sock, &readValid);
 #ifdef DEBUG
     	    		fprintf(stdout, "New Connection %d Established.\n", client_sock);
 #endif
     			}
     		}
     		
-    		/* search for available READ fd in read list */
+    		/* search for available READ fd in read list 
+    		 * only close socket in read loop, to prevent race, i.e., if close a socket
+    		 * when writing, then a new connection arrives */
     		loopFdWrap = readHead;
     		while(loopFdWrap) {
-    	    	if(!readValid[loopFdWrap -> fd]) {
-    				REMOVE_LINKEDLIST_NODE_NO_FREE(loopFdWrap, prevFdWrap, readHead);
+    	    	if(!FD_ISSET(loopFdWrap -> fd, &readValid)) {
+    	    		close_socket(loopFdWrap -> fd);
+    				REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, readHead);
     				continue;
     			}
     				
@@ -201,6 +205,9 @@ int main(int argc, char* argv[])
     				/* TODO: error handling, error type should be more specific */
     				if((readret = recv(loopFdWrap -> fd, loopFdWrap -> buf, 
     						BUF_SIZE, 0)) > 0) {
+#ifdef DEBUG
+    	    			fprintf(stdout, "Begin reading: %d.\n", loopFdWrap -> fd);
+#endif
     					loopFdWrap -> bufSize = readret;
     					/* respond, i.e. keep it in write buf 
        					 * add new client fd to write list */
@@ -218,20 +225,29 @@ int main(int argc, char* argv[])
        					writeHead -> bufSize = loopFdWrap -> bufSize;      				
     					writeHead -> fd = loopFdWrap -> fd;
     					/* a new write */
-    					writeValid[writeHead -> fd] = 1; 
+    					FD_SET(writeHead -> fd, &writeValid); 
     					
     					/* proceed next node */
     					loopFdWrap = loopFdWrap -> next;    					
 										
     				}
     				else {
-    					if(errno != EINTR) {
-    						readValid[loopFdWrap -> fd] = 0;
-           					writeValid[loopFdWrap -> fd] = 0;
-           					close(loopFdWrap -> fd);
+#ifdef DEBUG
+    	    			fprintf(stdout, "recv failed: %s.\n", readret == -1? 
+    	    				strerror(errno) : "peer shut down");
+#endif
+    					/* if interrupted, read next time; otherwise, release it;
+    					 * or if recv returns 0, which means peer shut down the 
+    					 * connection, close the socket */
+    					if(readret == 0 || (readret == -1 && errno != EINTR)) {
+    						FD_CLR(loopFdWrap -> fd, &readValid);
+    						FD_CLR(loopFdWrap -> fd, &writeValid);
+           					close_socket(loopFdWrap -> fd);
             				/* remove and free a write wrap from the linked list */
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, readHead);							         					
            				}
+           				else
+           					loopFdWrap = loopFdWrap -> next;
     				}
     			}
     			else {
@@ -244,8 +260,8 @@ int main(int argc, char* argv[])
     		loopFdWrap = writeHead;
     		prevFdWrap = NULL;
     		while(loopFdWrap) {
-    			if(!writeValid[loopFdWrap -> fd]) {
-    				REMOVE_LINKEDLIST_NODE_NO_FREE(loopFdWrap, prevFdWrap, writeHead);
+    			if(!FD_ISSET(loopFdWrap -> fd, &writeValid)) {
+    				REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);
     				continue;
     			}
     			if(FD_ISSET(loopFdWrap -> fd, &writeset)) {
@@ -267,17 +283,22 @@ int main(int argc, char* argv[])
            					/* failure due to an interruption, send should restart; 
            				 	* otherwise, the connection is no longer effective, remove it;
            				 	*/
+#ifdef DEBUG
+    	    				fprintf(stdout, "write failed: %s.\n", strerror(errno));
+#endif
            					if(errno != EINTR) {
-    							readValid[loopFdWrap -> fd] = 0;
-           						writeValid[loopFdWrap -> fd] = 0;
-           						close(loopFdWrap -> fd);
-            					/* remove and free a write wrap from the linked list */
+           						FD_CLR(loopFdWrap -> fd, &readValid);
+           						FD_CLR(loopFdWrap -> fd, &writeValid);
+            					/* remove and free a write wrap from the linked list, close 
+            					 * socket when in read loop */
 								REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);							       					
            					}
+           					else
+           						loopFdWrap = loopFdWrap -> next; 
            				}
            			}
            			else {
-						writeValid[loopFdWrap -> fd] = 0;
+						FD_CLR(loopFdWrap -> fd, &writeValid);
 						REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);						
            			}
     			}
