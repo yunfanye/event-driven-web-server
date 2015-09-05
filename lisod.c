@@ -2,7 +2,7 @@
 * echo_server.c																*
 * 																		 	*
 * Description: This file built on the provided starter code. contains the C	*
-*			   source code for an echo server. The server runs on ports	 	*
+*			   source code for an echo server. The server runs on ports		*
 *			   specified by command line arguments and simply write back 	*
 *			   anything sent to it by connected clients. It supports 		*
 * 			   concurrent clients by an event-drivin model, i.e. "select"	*
@@ -52,7 +52,7 @@
 		loopFdWrap = head;												\
 	}
 
-#define ADD_LINKEDLIST_NODE(head, client_fd)									\
+#define ADD_LINKEDLIST_NODE(head, client_fd)							\
 	if(!head) {															\
 		head = malloc(sizeof(struct fdWrap));							\
 		head -> next = NULL;											\
