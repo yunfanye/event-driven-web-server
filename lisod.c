@@ -27,14 +27,14 @@
 #include <fcntl.h>
 
 
-
 /* uncomment the following line to debug */
 /* #define DEBUG */
 
 /* Macros */
 /* the number of available file descriptors is typically 1024 */
 
-#define BUF_SIZE 4096
+/* if bytes sent exceed BUF_SIZE, then it will proceed it by several reads */
+#define BUF_SIZE 40960
 
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))
 /* only C99 support inline function, so just use macros */
