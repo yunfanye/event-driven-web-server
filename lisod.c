@@ -2,7 +2,7 @@
 * echo_server.c																*
 * 																		 	*
 * Description: This file built on the provided starter code. contains the C	*
-*			   source code for an echo server. The server runs on a port 	*
+*			   source code for an echo server. The server runs on ports	 	*
 *			   specified by command line arguments and simply write back 	*
 *			   anything sent to it by connected clients. It supports 		*
 * 			   concurrent clients by an event-drivin model, i.e. "select"	*
@@ -37,6 +37,7 @@
 #define BUF_SIZE 4096
 
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))
+/* only C99 support inline function, so just use macros */
 /* remove and free a wrap node from the linked list
  * prevFdWrap == NULL only if loopFdWrap == head */	
 #define REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, head)			\
@@ -50,12 +51,26 @@
 		free(loopFdWrap);												\
 		loopFdWrap = head;												\
 	}
+
+#define ADD_LINKEDLIST_NODE(head, client_fd)									\
+	if(!head) {															\
+		head = malloc(sizeof(struct fdWrap));							\
+		head -> next = NULL;											\
+	}																	\
+	else {																\
+		tempFdWrap = head;												\
+		head = malloc(sizeof(struct fdWrap));							\
+		head -> next = tempFdWrap;										\
+	}																	\
+	head -> fd = client_fd;
+
 /* signal */
 typedef void (*sighandler_t)(int);
 
 /* Function prototypes */           				
 sighandler_t Signal(int signum, sighandler_t handler); 
 int close_socket(int sock);
+void error_exit(char * msg);
 
 #ifdef DEBUG
 void sigint_handler(int sig) {
@@ -72,15 +87,18 @@ struct fdWrap {
 	struct fdWrap * next;
 } * readHead, * writeHead;
 
+/* global variables */
+int http_sock, https_sock;
+int log_fd;
+
 int main(int argc, char* argv[])
 {
-	int http_port;
-	int log_fd;
+	int http_port, https_port;	
 	char * log_file;
-    int sock, client_sock;
+    int client_sock;
     ssize_t readret, writeret;
     socklen_t cli_size;
-    struct sockaddr_in addr, cli_addr;
+    struct sockaddr_in http_addr, https_addr, cli_addr;
     fd_set readset, writeset, exceptset;
     struct timeval timeout;
     int nfds = 0;
@@ -91,78 +109,82 @@ int main(int argc, char* argv[])
     
     fprintf(stdout, "----- Echo Server -----\n");	
     
-    /* read the command line */
-    if(argc < 9) {
-    	/* not enought command line arguments */
-		fprintf(stderr, "not enought command line arguments!\n");
-		return EXIT_FAILURE;
-    }
-    else {
-    	/*since only http port is used currently, other parameters 
-    	 * are simply ignored */
-    	http_port = atoi(argv[1]);
-    	/* check the input, beyond the range, the port is invalid */
-    	if(http_port > 65535 || http_port < 0) {
-    		fprintf(stderr, "HTTP port number invalid!\n");
-    		return EXIT_FAILURE;
-    	}
-    	log_file = argv[3];
-    }    
-    /* if log file exists, append string; if not create it; we don't check
-     * whether the directory exists, as the server manager should make a
-     * decision */
-    if((log_fd = open(log_file, (O_WRONLY | O_CREAT | O_APPEND))) < 0) {
-		fprintf(stderr, "Open log file '%s' error: %s\n", log_file,
-			strerror(errno));
-		return EXIT_FAILURE;
-    }
-    /* Redirect stderr to stdout (so that we will get all output
-     * on the pipe connected to stdout) */
-    dup2(1, 2);
-    /* redirect stdout to log_file */
-    if (dup2(log_fd, STDOUT_FILENO) < 0) {
-    	fprintf(stderr, "Cannot redirect stdout to log_file \n");
-		return EXIT_FAILURE;
-    }    
-    
-	/* init process */
+    /* init process */
 	readHead = NULL;
 	writeHead = NULL;
 	FD_ZERO(&readValid);
 	FD_ZERO(&writeValid);
-    
-    /* ignore ctrl + c */
+	http_sock = 0;
+	https_sock = 0;
+	log_fd = 0;
+	
+	/* ignore ctrl + c, if DEBUG, use ctrl+c to test interruption */
 #ifndef DEBUG
     Signal(SIGINT, SIG_IGN);
 #else
 	Signal(SIGINT, sigint_handler);
 #endif
-    /* all networked programs must create a socket */
-    if ((sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
-    {
-        fprintf(stderr, "Failed creating socket.\n");
-        return EXIT_FAILURE;
+    
+    /* read the command line, init config */
+    if(argc < 9) {
+    	/* not enought command line arguments */
+		error_exit("Not enought command line arguments!");
     }
+    else {
+    	/* since only http port is used currently, other parameters 
+    	 * are simply ignored */
+    	http_port = atoi(argv[1]);
+    	https_port = atoi(argv[2]);
+    	/* check the input, beyond the range, the port is invalid */
+    	if(http_port > 65535 || http_port < 0)
+    		error_exit("HTTP port number invalid!");
+    	if(https_port > 65535 || https_port < 0) 
+    		error_exit("HTTPS port number invalid!");
+    	if(https_port == http_port)
+    		error_exit("HTTP port number should not equal to that of HTTPS");
+    	/* get log file */
+    	log_file = argv[3];
+    }
+        
+    /* if log file exists, append string; if not create it; we don't check
+     * whether the directory exists, as the server manager should make a
+     * decision */
+    if((log_fd = open(log_file, (O_WRONLY | O_CREAT | O_APPEND))) < 0) 
+    	error_exit("Cannot open log file.");
+    /* Redirect stderr to stdout (so that we will get all output
+     * on the pipe connected to stdout) */
+    if(dup2(1, 2) < 0)
+    	error_exit("Cannot redirect stderr to stdout");
+    /* redirect stdout to log_file */
+    if (dup2(log_fd, STDOUT_FILENO) < 0)
+    	error_exit("Cannot redirect stdout to log file");
 
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(http_port);
-    addr.sin_addr.s_addr = INADDR_ANY;
-
+    /* Create HTTP socket */
+    if ((http_sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+        error_exit("Failed creating HTTP socket.");
+    /* Create HTTPS socket */
+    if ((https_sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+        error_exit("Failed creating HTTPS socket.");
+	
+	/* bind socket */
+    http_addr.sin_family = AF_INET;
+    http_addr.sin_port = htons(http_port);
+    http_addr.sin_addr.s_addr = INADDR_ANY;
     /* servers bind sockets to ports---notify the OS they accept connections */
-    if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)))
-    {
-        close_socket(sock);
-        fprintf(stderr, "Failed binding socket.\n");
-        return EXIT_FAILURE;
-    }
-
+    if (bind(http_sock, (struct sockaddr *) &http_addr, sizeof(http_addr)))
+    	error_exit("Failed binding HTTP socket.");
+    	
+    https_addr.sin_family = AF_INET;
+    https_addr.sin_port = htons(https_port);
+    https_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(https_sock, (struct sockaddr *) &https_addr, sizeof(https_addr)))
+    	error_exit("Failed binding HTTP socket.");
+    
 	/* listen to the sock */
-    if (listen(sock, 5))
-    {
-        close_socket(sock);
-        fprintf(stderr, "Error listening on socket.\n");
-        return EXIT_FAILURE;
-    }
+    if (listen(http_sock, 5)) 
+    	error_exit("Error listening on HTTP socket.");
+    if (listen(https_sock, 5)) 
+    	error_exit("Error listening on HTTPS socket.");
 
     /* finally, loop waiting for input and then write it back */
     
@@ -179,8 +201,10 @@ int main(int argc, char* argv[])
          * add listen fd to set, but not to list
      	 * as listen fd should be treated differently from client fd
      	 */
-     	nfds = sock;
-    	FD_SET(sock, &readset);
+    	FD_SET(http_sock, &readset);   	
+    	/* add https fd */    	
+    	FD_SET(https_sock, &readset);
+    	nfds = MAX(http_sock, https_sock);
     	/* if no write buf exists, add read fd in list to set;
     	 * add all write fd to set */ 
     	loopFdWrap = readHead;
@@ -202,33 +226,31 @@ int main(int argc, char* argv[])
     	/* begin select */
     	if((selectRet = select(nfds, &readset, &writeset, &exceptset, 
     		&timeout)) > 0) {
-#ifdef DEBUG
-    	    fprintf(stdout, "Selected fd(s): %d.\n", selectRet);
-#endif
+
     		/* TODO: error handling, currently just ignore error from accept */
-    	    if(FD_ISSET(sock, &readset)) {
+    	    if(FD_ISSET(http_sock, &readset)) {
     	    	/* establish new client socket */
     	    	cli_size = sizeof(cli_addr);
-				if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
+				if ((client_sock = accept(http_sock, (struct sockaddr *) &cli_addr,
                 		&cli_size)) != -1) {
        				/* add new client fd to read list */
-       				if(!readHead) {
-       					readHead = malloc(sizeof(struct fdWrap));
-       					readHead -> next = NULL;
-       				}
-       				else {
-       					tempFdWrap = readHead;
-       					readHead = malloc(sizeof(struct fdWrap));
-       					readHead -> next = tempFdWrap;
-       				}      				
-    				readHead -> fd = client_sock;
+       				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
-    				/* conn just established, refer equals 1 */
+    				/* set corresponding read valid as 1 */
     				FD_SET(client_sock, &readValid);
-#ifdef DEBUG
-    	    		fprintf(stdout, "New Connection %d Established.\n", 
-    	    			client_sock);
-#endif
+    			}
+    		}
+    		/* do not distinguish between http & https for current service */
+    		if(FD_ISSET(https_sock, &readset)) {
+    	    	/* establish new client socket */
+    	    	cli_size = sizeof(cli_addr);
+				if ((client_sock = accept(https_sock, (struct sockaddr *) &cli_addr,
+                		&cli_size)) != -1) {
+       				/* add new client fd to read list */
+       				ADD_LINKEDLIST_NODE(readHead, client_sock);
+    				readHead -> bufSize = 0;
+    				/* set corresponding read valid as 1 */
+    				FD_SET(client_sock, &readValid);
     			}
     		}
     		
@@ -366,7 +388,8 @@ int main(int argc, char* argv[])
     	/* end select */
     }
 	/* free all resources */
-    close_socket(sock);
+    close_socket(http_sock);
+    close_socket(https_sock);
 
     return EXIT_SUCCESS;
 }
@@ -398,5 +421,16 @@ sighandler_t Signal(int signum, sighandler_t handler)
     		strerror(errno));
     }
     return (old_action.sa_handler);
+}
+
+void error_exit(char * msg) {
+	fprintf(stderr, "%s\n", msg);
+	if(http_sock > 0)
+		close_socket(http_sock);
+	if(https_sock > 0)
+		close_socket(https_sock);
+	if(log_fd > 0)
+		close(log_fd);
+	exit(EXIT_FAILURE);
 }
 
