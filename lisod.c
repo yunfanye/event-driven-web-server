@@ -1,14 +1,14 @@
 /****************************************************************************
-* echo_server.c                                                           	*
-*                                                                           *
-* Description: This file built on the provided starter code. contains the C	* 
+* echo_server.c																*
+* 																		 	*
+* Description: This file built on the provided starter code. contains the C	*
 *			   source code for an echo server. The server runs on a         *
 *			   hard-coded port and simply write back anything sent to it by *
 *			   connected clients. It supports concurrent clients by an      *
 *			   event-drivin model, i.e. "select" function in c.             *
 *                                                                           *
 * Author: Yunfan Ye <yunfany@andrew.cmu.edu>,                         		*
-*                                                                           *
+*																			*
 *****************************************************************************/
 
 #include <netinet/in.h>
@@ -32,7 +32,7 @@
 #define BUF_SIZE 4096
 
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))
-/* remove a wrap node from the linked list
+/* remove and free a wrap node from the linked list
  * prevFdWrap == NULL only if loopFdWrap == head */	
 #define REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, head)			\
 	if(prevFdWrap) {													\
@@ -133,7 +133,8 @@ int main(int argc, char* argv[])
         FD_ZERO(&readset);
     	FD_ZERO(&writeset);
     	FD_ZERO(&exceptset);
-        /* add listen fd to set, but not to list
+        /*
+         * add listen fd to set, but not to list
      	 * as listen fd should be treated differently from client fd
      	 */
      	nfds = sock;
@@ -157,7 +158,8 @@ int main(int argc, char* argv[])
     	/* nfds is the highest fd plus one */
     	nfds++;
     	/* begin select */
-    	if((selectRet = select(nfds, &readset, &writeset, &exceptset, &timeout)) > 0) {
+    	if((selectRet = select(nfds, &readset, &writeset, &exceptset, 
+    		&timeout)) > 0) {
 #ifdef DEBUG
     	    fprintf(stdout, "Selected fd(s): %d.\n", selectRet);
 #endif
@@ -165,7 +167,7 @@ int main(int argc, char* argv[])
     	    if(FD_ISSET(sock, &readset)) {
     	    	/* establish new client socket */
     	    	cli_size = sizeof(cli_addr);
-       			if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
+				if ((client_sock = accept(sock, (struct sockaddr *) &cli_addr,
                 		&cli_size)) != -1) {
        				/* add new client fd to read list */
        				if(!readHead) {
@@ -182,14 +184,16 @@ int main(int argc, char* argv[])
     				/* conn just established, refer equals 1 */
     				FD_SET(client_sock, &readValid);
 #ifdef DEBUG
-    	    		fprintf(stdout, "New Connection %d Established.\n", client_sock);
+    	    		fprintf(stdout, "New Connection %d Established.\n", 
+    	    			client_sock);
 #endif
     			}
     		}
     		
     		/* search for available READ fd in read list 
-    		 * only close socket in read loop, to prevent race, i.e., if close a socket
-    		 * when writing, then a new connection arrives */
+    		 * only close socket in read loop, to prevent race, i.e., 
+    		 * if close a socket when writing, then a new connection 
+    		 * arrives */
     		loopFdWrap = readHead;
     		while(loopFdWrap) {
     	    	if(!FD_ISSET(loopFdWrap -> fd, &readValid)) {
@@ -202,11 +206,12 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
     	    		fprintf(stdout, "Begin reading: %d.\n", loopFdWrap -> fd);
 #endif
-    				/* TODO: error handling, error type should be more specific */
+    				/* TODO: more specific error handling */
     				if((readret = recv(loopFdWrap -> fd, loopFdWrap -> buf, 
     						BUF_SIZE, 0)) > 0) {
 #ifdef DEBUG
-    	    			fprintf(stdout, "Begin reading: %d.\n", loopFdWrap -> fd);
+    	    			fprintf(stdout, "Begin reading: %d.\n", 
+    	    				loopFdWrap -> fd);
 #endif
     					loopFdWrap -> bufSize = readret;
     					/* respond, i.e. keep it in write buf 
@@ -221,8 +226,9 @@ int main(int argc, char* argv[])
        						writeHead -> next = tempFdWrap;
        					}
        					/* return the same content */
-       					memcpy(writeHead -> buf, loopFdWrap -> buf, loopFdWrap -> bufSize); 
-       					writeHead -> bufSize = loopFdWrap -> bufSize;      				
+       					memcpy(writeHead -> buf, loopFdWrap -> buf, 
+       						loopFdWrap -> bufSize); 
+						writeHead -> bufSize = loopFdWrap -> bufSize;
     					writeHead -> fd = loopFdWrap -> fd;
     					/* a new write */
     					FD_SET(writeHead -> fd, &writeValid); 
@@ -236,15 +242,17 @@ int main(int argc, char* argv[])
     	    			fprintf(stdout, "recv failed: %s.\n", readret == -1? 
     	    				strerror(errno) : "peer shut down");
 #endif
-    					/* if interrupted, read next time; otherwise, release it;
-    					 * or if recv returns 0, which means peer shut down the 
-    					 * connection, close the socket */
+    					/* if interrupted, read next time; otherwise, release 
+						 * it. Or if recv returns 0, which means peer shut down
+						 * the connection, close the socket */
     					if(readret == 0 || (readret == -1 && errno != EINTR)) {
     						FD_CLR(loopFdWrap -> fd, &readValid);
     						FD_CLR(loopFdWrap -> fd, &writeValid);
            					close_socket(loopFdWrap -> fd);
-            				/* remove and free a write wrap from the linked list */
-							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, readHead);							         					
+            				/* remove and free a write wrap from the linked 
+            				 * list */
+							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
+								readHead);		
            				}
            				else
            					loopFdWrap = loopFdWrap -> next;
@@ -268,30 +276,34 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
     	    		fprintf(stdout, "Begin writing.\n");
 #endif 				  				
-    				/* TODO: error handling, error type should be more specific */
-           			if ((writeret = send(loopFdWrap -> fd, loopFdWrap -> buf, 
-           				loopFdWrap -> bufSize, 0)) != loopFdWrap -> bufSize) {	
+    				/* TODO: more specific error handling */
+					if ((writeret = send(loopFdWrap -> fd, loopFdWrap -> buf, 
+						loopFdWrap -> bufSize, 0)) != loopFdWrap -> bufSize) {
     				    /* if some bytes have been sent */
            				if(writeret != -1) {
            				    loopFdWrap -> bufSize -= writeret;
-           					/* src and dest may overlap, so use memmove instead of memcpy */
-           					memmove(loopFdWrap -> buf, (loopFdWrap -> buf + writeret), 
-           						loopFdWrap -> bufSize);
-           					loopFdWrap = loopFdWrap -> next;          			
+							/* src and dest may overlap, so use memmove instead
+           					 * of memcpy */
+           					memmove(loopFdWrap -> buf, (loopFdWrap -> buf + 
+           						writeret), loopFdWrap -> bufSize);
+           					loopFdWrap = loopFdWrap -> next; 
            				}
            				else {
-           					/* failure due to an interruption, send should restart; 
-           				 	* otherwise, the connection is no longer effective, remove it;
-           				 	*/
+           					/* failure due to an interruption, send should
+							 * restart; otherwise, the connection is no longer
+           					 * effective, remove it;
+           				 	 */
 #ifdef DEBUG
-    	    				fprintf(stdout, "write failed: %s.\n", strerror(errno));
+    	    				fprintf(stdout, "write failed: %s.\n", 
+    	    					strerror(errno));
 #endif
            					if(errno != EINTR) {
            						FD_CLR(loopFdWrap -> fd, &readValid);
            						FD_CLR(loopFdWrap -> fd, &writeValid);
-            					/* remove and free a write wrap from the linked list, close 
-            					 * socket when in read loop */
-								REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);							       					
+            					/* remove and free a write wrap from the linked
+            					 * list, close socket when in read loop */
+								REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap,
+									writeHead);
            					}
            					else
            						loopFdWrap = loopFdWrap -> next; 
@@ -299,7 +311,8 @@ int main(int argc, char* argv[])
            			}
            			else {
 						FD_CLR(loopFdWrap -> fd, &writeValid);
-						REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);						
+						REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
+							writeHead);						
            			}
     			}
     			else {
