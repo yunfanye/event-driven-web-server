@@ -2,10 +2,11 @@
 * echo_server.c																*
 * 																		 	*
 * Description: This file built on the provided starter code. contains the C	*
-*			   source code for an echo server. The server runs on a         *
-*			   hard-coded port and simply write back anything sent to it by *
-*			   connected clients. It supports concurrent clients by an      *
-*			   event-drivin model, i.e. "select" function in c.             *
+*			   source code for an echo server. The server runs on a port 	*
+*			   specified by command line arguments and simply write back 	*
+*			   anything sent to it by connected clients. It supports 		*
+* 			   concurrent clients by an event-drivin model, i.e. "select"	*
+*			   function in c.             									*
 *                                                                           *
 * Author: Yunfan Ye <yunfany@andrew.cmu.edu>,                         		*
 *																			*
@@ -22,13 +23,17 @@
 #include <errno.h>
 #include <signal.h>
 #include <ctype.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+
 
 /* uncomment the following line to debug */
 /* #define DEBUG */
 
 /* Macros */
 /* the number of available file descriptors is typically 1024 */
-#define ECHO_PORT 9999
+
 #define BUF_SIZE 4096
 
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))
@@ -69,6 +74,9 @@ struct fdWrap {
 
 int main(int argc, char* argv[])
 {
+	int http_port;
+	int log_fd;
+	char * log_file;
     int sock, client_sock;
     ssize_t readret, writeret;
     socklen_t cli_size;
@@ -82,6 +90,40 @@ int main(int argc, char* argv[])
     struct fdWrap * tempFdWrap, * loopFdWrap, * prevFdWrap;
     
     fprintf(stdout, "----- Echo Server -----\n");	
+    
+    /* read the command line */
+    if(argc < 9) {
+    	/* not enought command line arguments */
+		fprintf(stderr, "not enought command line arguments!\n");
+		return EXIT_FAILURE;
+    }
+    else {
+    	/*since only http port is used currently, other parameters 
+    	 * are simply ignored */
+    	http_port = atoi(argv[1]);
+    	/* check the input, beyond the range, the port is invalid */
+    	if(http_port > 65535 || http_port < 0) {
+    		fprintf(stderr, "HTTP port number invalid!\n");
+    		return EXIT_FAILURE;
+    	}
+    	log_file = argv[3];
+    }    
+    /* if log file exists, append string; if not create it; we don't check
+     * whether the directory exists, as the server manager should make a
+     * decision */
+    if((log_fd = open(log_file, (O_WRONLY | O_CREAT | O_APPEND))) < 0) {
+		fprintf(stderr, "Open log file '%s' error: %s\n", log_file,
+			strerror(errno));
+		return EXIT_FAILURE;
+    }
+    /* Redirect stderr to stdout (so that we will get all output
+     * on the pipe connected to stdout) */
+    dup2(1, 2);
+    /* redirect stdout to log_file */
+    if (dup2(log_fd, STDOUT_FILENO) < 0) {
+    	fprintf(stderr, "Cannot redirect stdout to log_file \n");
+		return EXIT_FAILURE;
+    }    
     
 	/* init process */
 	readHead = NULL;
@@ -103,7 +145,7 @@ int main(int argc, char* argv[])
     }
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(ECHO_PORT);
+    addr.sin_port = htons(http_port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     /* servers bind sockets to ports---notify the OS they accept connections */
@@ -342,6 +384,7 @@ int close_socket(int sock)
     return 0;
 }
 
+/* Wrapper functions */
 sighandler_t Signal(int signum, sighandler_t handler) 
 {
     struct sigaction action, old_action;
@@ -356,3 +399,4 @@ sighandler_t Signal(int signum, sighandler_t handler)
     }
     return (old_action.sa_handler);
 }
+
