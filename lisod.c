@@ -388,6 +388,7 @@ int main(int argc, char* argv[])
     	/* end select */
     }
 	/* free all resources */
+	close(log_fd);
     close_socket(http_sock);
     close_socket(https_sock);
 
