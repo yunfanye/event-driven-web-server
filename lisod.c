@@ -168,14 +168,14 @@ int main(int argc, char* argv[])
 	
 	/* bind socket */
     http_addr.sin_family = AF_INET;
-    http_addr.sin_port = htons(http_port);
+    http_addr.sin_port = http_port;
     http_addr.sin_addr.s_addr = INADDR_ANY;
     /* servers bind sockets to ports---notify the OS they accept connections */
     if (bind(http_sock, (struct sockaddr *) &http_addr, sizeof(http_addr)))
     	error_exit("Failed binding HTTP socket.");
     	
     https_addr.sin_family = AF_INET;
-    https_addr.sin_port = htons(https_port);
+    https_addr.sin_port = https_port;
     https_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(https_sock, (struct sockaddr *) &https_addr, sizeof(https_addr)))
     	error_exit("Failed binding HTTPS socket.");
