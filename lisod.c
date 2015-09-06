@@ -149,7 +149,7 @@ int main(int argc, char* argv[])
     /* if log file exists, append string; if not create it; we don't check
      * whether the directory exists, as the server manager should make a
      * decision */
-    if((log_fd = open(log_file, (O_WRONLY | O_CREAT | O_APPEND))) < 0) 
+    if((log_fd = open(log_file, (O_WRONLY | O_CREAT))) < 0) 
     	error_exit("Cannot open log file.");
     /* Redirect stderr to stdout (so that we will get all output
      * on the pipe connected to stdout) */
@@ -178,12 +178,12 @@ int main(int argc, char* argv[])
     https_addr.sin_port = htons(https_port);
     https_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(https_sock, (struct sockaddr *) &https_addr, sizeof(https_addr)))
-    	error_exit("Failed binding HTTP socket.");
+    	error_exit("Failed binding HTTPS socket.");
     
 	/* listen to the sock */
-    if (listen(http_sock, 5)) 
+    if (listen(http_sock, 500)) 
     	error_exit("Error listening on HTTP socket.");
-    if (listen(https_sock, 5)) 
+    if (listen(https_sock, 500)) 
     	error_exit("Error listening on HTTPS socket.");
 
     /* finally, loop waiting for input and then write it back */
