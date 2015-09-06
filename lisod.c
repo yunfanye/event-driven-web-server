@@ -148,7 +148,8 @@ int main(int argc, char* argv[])
     }
         
     /* if log file exists, append string; if not create it; if the 
-     * directory doesn't exit, create it; */
+     * directory doesn't exit, create it; That directly call mkdir()
+     * saves a stat() */
     fileNameLen = strlen(log_file);
     for (i = fileNameLen - 2; i > 0; i--) {
     	if(log_file[i] == '/') {
@@ -241,8 +242,8 @@ int main(int argc, char* argv[])
     	    if(FD_ISSET(http_sock, &readset)) {
     	    	/* establish new client socket */
     	    	cli_size = sizeof(cli_addr);
-				if ((client_sock = accept(http_sock, (struct sockaddr *) &cli_addr,
-                		&cli_size)) != -1) {
+				if ((client_sock = accept(http_sock, 
+					(struct sockaddr *) &cli_addr, &cli_size)) != -1) {
        				/* add new client fd to read list */
        				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
@@ -254,8 +255,8 @@ int main(int argc, char* argv[])
     		if(FD_ISSET(https_sock, &readset)) {
     	    	/* establish new client socket */
     	    	cli_size = sizeof(cli_addr);
-				if ((client_sock = accept(https_sock, (struct sockaddr *) &cli_addr,
-                		&cli_size)) != -1) {
+				if ((client_sock = accept(https_sock, 
+					(struct sockaddr *) &cli_addr, &cli_size)) != -1) {
        				/* add new client fd to read list */
        				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
