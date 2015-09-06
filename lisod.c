@@ -95,8 +95,7 @@ int main(int argc, char* argv[])
 {
 	int i, fileNameLen;
 	int http_port, https_port;	
-	char * log_file;
-	char log_dir[32];
+	char * log_file, * log_dir;
     int client_sock;
     ssize_t readret, writeret;
     socklen_t cli_size;
@@ -148,16 +147,18 @@ int main(int argc, char* argv[])
     	log_file = argv[3];
     }
         
-    /* if log file exists, append string; if not create it; we don't check
-     * whether the directory exists, as the server manager should make a
-     * decision */
+    /* if log file exists, append string; if not create it; if the 
+     * directory doesn't exit, create it; */
     fileNameLen = strlen(log_file);
     for (i = fileNameLen - 2; i > 0; i--) {
     	if(log_file[i] == '/') {
+    		log_dir = malloc(i + 1);
     		strncpy(log_dir, log_file, i + 1);
+    		mkdir(log_dir, 0700);
+    		free(log_dir);
     	}
     }
-    mkdir(log_dir, 0777);
+    
     if((log_fd = open(log_file, (O_WRONLY | O_CREAT))) < 0) 
     	error_exit("Cannot open log file.");
     /* Redirect stderr to stdout (so that we will get all output
