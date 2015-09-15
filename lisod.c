@@ -25,71 +25,13 @@
 #include <ctype.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include "requestHandler.h"
+#include "lisod.h"
+
 
 
 /* uncomment the following line to debug */
 /* #define DEBUG */
-
-/* Macros */
-/* the number of available file descriptors is typically 1024 */
-
-/* if bytes sent exceed BUF_SIZE, then it will proceed it by several reads */
-#define BUF_SIZE 40960
-
-#define MAX(x, y)  ((x) > (y) ? (x) : (y))
-/* only C99 support inline function, so just use macros */
-/* remove and free a wrap node from the linked list
- * prevFdWrap == NULL only if loopFdWrap == head */	
-#define REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, head)			\
-	if(prevFdWrap) {													\
-		prevFdWrap -> next = loopFdWrap -> next;						\
-		free(loopFdWrap);												\
-		loopFdWrap = prevFdWrap -> next;								\
-	}																	\
-	else {																\
-		head = loopFdWrap -> next;										\
-		free(loopFdWrap);												\
-		loopFdWrap = head;												\
-	}
-
-#define ADD_LINKEDLIST_NODE(head, client_fd)							\
-	if(!head) {															\
-		head = malloc(sizeof(struct fdWrap));							\
-		head -> next = NULL;											\
-	}																	\
-	else {																\
-		tempFdWrap = head;												\
-		head = malloc(sizeof(struct fdWrap));							\
-		head -> next = tempFdWrap;										\
-	}																	\
-	head -> fd = client_fd;
-
-/* signal */
-typedef void (*sighandler_t)(int);
-
-/* Function prototypes */           				
-sighandler_t Signal(int signum, sighandler_t handler); 
-int close_socket(int sock);
-void error_exit(char * msg);
-
-#ifdef DEBUG
-void sigint_handler(int sig) {
-	/* do nothing, just test the performance when being interrupted */
-    return;
-}
-#endif
-
-
-struct fdWrap {
-	int fd;
-	int bufSize;
-	char buf[BUF_SIZE];
-	struct fdWrap * next;
-} * readHead, * writeHead;
-
-/* global variables */
-int http_sock, https_sock;
-int log_fd;
 
 int main(int argc, char* argv[])
 {
@@ -97,6 +39,7 @@ int main(int argc, char* argv[])
 	int http_port, https_port;	
 	char * log_file, * log_dir;
     int client_sock;
+    int responseSize;
     ssize_t readret, writeret;
     socklen_t cli_size;
     struct sockaddr_in http_addr, https_addr, cli_addr;
@@ -107,6 +50,7 @@ int main(int argc, char* argv[])
   	/* readValid, writeValid are flags to mark when to release resource */
     fd_set readValid, writeValid;
     struct fdWrap * tempFdWrap, * loopFdWrap, * prevFdWrap;
+    char buf[BUF_SIZE];
     
     fprintf(stdout, "----- Echo Server -----\n");	
     
@@ -247,6 +191,7 @@ int main(int argc, char* argv[])
        				/* add new client fd to read list */
        				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
+    				readHead -> prot = HTTP;
     				/* set corresponding read valid as 1 */
     				FD_SET(client_sock, &readValid);
     			}
@@ -260,6 +205,7 @@ int main(int argc, char* argv[])
        				/* add new client fd to read list */
        				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
+    				readHead -> prot = HTTPS;
     				/* set corresponding read valid as 1 */
     				FD_SET(client_sock, &readValid);
     			}
@@ -289,25 +235,23 @@ int main(int argc, char* argv[])
     	    				loopFdWrap -> fd);
 #endif
     					loopFdWrap -> bufSize = readret;
-    					/* respond, i.e. keep it in write buf 
-       					 * add new client fd to write list */
-       					if(!writeHead) {
-       						writeHead = malloc(sizeof(struct fdWrap));
-       						writeHead -> next = NULL;
-       					}
-       					else {
-       						tempFdWrap = writeHead;
-       						writeHead = malloc(sizeof(struct fdWrap));
-       						writeHead -> next = tempFdWrap;
-       					}
-       					/* return the same content */
-       					memcpy(writeHead -> buf, loopFdWrap -> buf, 
-       						loopFdWrap -> bufSize); 
-						writeHead -> bufSize = loopFdWrap -> bufSize;
-    					writeHead -> fd = loopFdWrap -> fd;
-    					/* a new write */
-    					FD_SET(writeHead -> fd, &writeValid); 
     					
+    					/* proceed request and generate response */
+       					if(loopFdWrap -> prot == HTTP)
+       						responseSize = HandleHTTP(loopFdWrap -> buf,
+       							loopFdWrap -> bufSize, buf);
+       					else
+       						responseSize = HandleHTTPS(loopFdWrap -> buf,
+       							loopFdWrap -> bufSize, buf);
+    					if(responseSize > 0) {
+    						/* respond, i.e. keep it in write buf 
+       						 * add new client fd to write list */
+       						ADD_LINKEDLIST_NODE(writeHead, loopFdWrap -> fd);    					
+       						memcpy(writeHead -> buf, buf, responseSize);
+							writeHead -> bufSize = responseSize;					
+    						/* a new write */
+    						FD_SET(writeHead -> fd, &writeValid);
+    					}    					
     					/* proceed next node */
     					loopFdWrap = loopFdWrap -> next;    					
 										
