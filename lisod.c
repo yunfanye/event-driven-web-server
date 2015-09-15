@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 	char * log_file, * log_dir;
     int client_sock;
     int responseSize;
-    ssize_t readret, writeret;
+    ssize_t readlen, readret, writeret;
     socklen_t cli_size;
     struct sockaddr_in http_addr, https_addr, cli_addr;
     fd_set readset, writeset, exceptset;
@@ -160,7 +160,8 @@ int main(int argc, char* argv[])
     	/* add https fd */    	
     	FD_SET(https_sock, &readset);
     	nfds = MAX(http_sock, https_sock);
-    	/* if no write buf exists, add read fd in list to set;
+    	/* if no corresponding write buf exists, add read fd in list to set;
+    	 * Thus, for a specific socket, request must be handled one by one
     	 * add all write fd to set */ 
     	loopFdWrap = readHead;
     	while(loopFdWrap) {
@@ -228,29 +229,31 @@ int main(int argc, char* argv[])
     	    		fprintf(stdout, "Begin reading: %d.\n", loopFdWrap -> fd);
 #endif
     				/* TODO: more specific error handling */
-    				if((readret = recv(loopFdWrap -> fd, loopFdWrap -> buf, 
-    						BUF_SIZE, 0)) > 0) {
-#ifdef DEBUG
-    	    			fprintf(stdout, "Begin reading: %d.\n", 
-    	    				loopFdWrap -> fd);
-#endif
-    					loopFdWrap -> bufSize = readret;
+    				readlen = BUF_SIZE - loopFdWrap -> bufSize;
+    				if((readret = recv(loopFdWrap -> fd, buf, 
+    						readlen, 0)) > 0) {
+    					/* append the bytes to buf */
+    					memcpy(loopFdWrap -> buf + loopFdWrap -> bufSize, 
+    						buf, readret);
+    					loopFdWrap -> bufSize += readret;
     					
     					/* proceed request and generate response */
        					if(loopFdWrap -> prot == HTTP)
        						responseSize = HandleHTTP(loopFdWrap -> buf,
-       							loopFdWrap -> bufSize, buf);
+       							&loopFdWrap -> bufSize, buf);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
-       							loopFdWrap -> bufSize, buf);
+       							&loopFdWrap -> bufSize, buf);
     					if(responseSize > 0) {
-    						/* respond, i.e. keep it in write buf 
+    						/* request processed; then respond, 
+    						 * i.e. keep it in write buf and
        						 * add new client fd to write list */
        						ADD_LINKEDLIST_NODE(writeHead, loopFdWrap -> fd);    					
        						memcpy(writeHead -> buf, buf, responseSize);
 							writeHead -> bufSize = responseSize;					
     						/* a new write */
     						FD_SET(writeHead -> fd, &writeValid);
+    						loopFdWrap -> bufSize = 0;
     					}    					
     					/* proceed next node */
     					loopFdWrap = loopFdWrap -> next;    					
