@@ -6,7 +6,7 @@
 
 int HandleHTTP(char * buf, int buf_size, char * out_buf);
 int HandleHTTPS(char * buf, int buf_size, char * out_buf);
-void get_response(char * out_buf);
+int get_response(char * out_buf);
 int get_message(enum status code, char * msg);
 off_t get_body(int fd, char * out_buf, off_t size);
 

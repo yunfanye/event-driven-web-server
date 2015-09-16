@@ -19,14 +19,23 @@ echo_client:
 lex.yy.c: lexer.l
 	flex $^
 
-%.o: %.c
+lisod.o: lisod.c
+	gcc -g -c $^ -o $@
+
+requestHandler.o: requestHandler.c
+	gcc -g -c $^ -o $@
+
+y.tab.o: y.tab.c
+	gcc -g -c $^ -o $@
+
+lex.yy.o: lex.yy.c
 	gcc -g -c $^ -o $@
 
 y.tab.c: parser.y
 	yacc -d $^
 
 clean:
-	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz
+	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c
 	
 handin:
 	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py)

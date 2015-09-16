@@ -29,11 +29,6 @@
 #include "lisod.h"
 #include "common.h"
 
-
-
-/* uncomment the following line to debug */
-/* #define DEBUG */
-
 int main(int argc, char* argv[])
 {
 	int i, fileNameLen;
@@ -52,6 +47,7 @@ int main(int argc, char* argv[])
     fd_set readValid, writeValid;
     struct fdWrap * tempFdWrap, * loopFdWrap, * prevFdWrap;
     char buf[BUF_SIZE];
+    int www_root_len;
     
     fprintf(stdout, "----- Echo Server -----\n");	
     
@@ -90,6 +86,11 @@ int main(int argc, char* argv[])
     		error_exit("HTTP port number should not equal to that of HTTPS");
     	/* get log file */
     	log_file = argv[3];
+    	/* get www root */
+    	www_root_len = strlen(argv[5]);
+    	if(www_root_len > SMALL_BUF_SIZE)
+    		error_exit("The length of www root is not long!");
+    	memcpy(_www_root, argv[5], www_root_len);
     }
         
     /* if log file exists, append string; if not create it; if the 
@@ -105,7 +106,7 @@ int main(int argc, char* argv[])
     	}
     }
     
-    if((log_fd = open(log_file, (O_WRONLY | O_CREAT))) < 0) 
+    if((log_fd = open(log_file, (O_RDWR | O_CREAT))) < 0) 
     	error_exit("Cannot open log file.");
     /* Redirect stderr to stdout (so that we will get all output
      * on the pipe connected to stdout) */
@@ -183,7 +184,6 @@ int main(int argc, char* argv[])
     	/* begin select */
     	if((selectRet = select(nfds, &readset, &writeset, &exceptset, 
     		&timeout)) > 0) {
-
     		/* TODO: error handling, currently just ignore error from accept */
     	    if(FD_ISSET(http_sock, &readset)) {
     	    	/* establish new client socket */
@@ -227,7 +227,7 @@ int main(int argc, char* argv[])
     				
     			if(FD_ISSET(loopFdWrap -> fd, &readset)) {
 #ifdef DEBUG
-    	    		fprintf(stdout, "Begin reading: %d.\n", loopFdWrap -> fd);
+    	    		fprintf(stdout, "Begin reading: %d, buf_size: %d.\n", loopFdWrap -> fd, loopFdWrap -> bufSize);
 #endif
     				/* TODO: more specific error handling */
     				readlen = BUF_SIZE - loopFdWrap -> bufSize;
@@ -239,12 +239,16 @@ int main(int argc, char* argv[])
     					loopFdWrap -> bufSize += readret;
     					
     					/* proceed request and generate response */
+					
        					if(loopFdWrap -> prot == HTTP)
        						responseSize = HandleHTTP(loopFdWrap -> buf,
        							loopFdWrap -> bufSize, buf);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
        							loopFdWrap -> bufSize, buf);
+#ifdef DEBUG
+    	    		fprintf(stdout, "response: %d\n", responseSize);
+#endif    
     					if(responseSize > 0) {
     						/* request processed; then respond, 
     						 * i.e. keep it in write buf and

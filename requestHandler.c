@@ -33,6 +33,8 @@ char _prot[SMALL_BUF_SIZE];
 char _token[SMALL_BUF_SIZE];
 char _text[SMALL_BUF_SIZE];
 
+extern char _www_root[SMALL_BUF_SIZE];
+
 enum parse_state {
 	STATE_START = 0,
 	STATE_CR,
@@ -70,6 +72,7 @@ int HandleHTTP(char * buf, int buf_size, char * out_buf) {
 	char work_buf[SMALL_BUF_SIZE];
 	char * char_tmp;
 	enum parse_state state = STATE_START;
+	int response_size;
 	
 	printf("---------------parser begin-----------------\r\n");
 	
@@ -112,26 +115,26 @@ int HandleHTTP(char * buf, int buf_size, char * out_buf) {
 			state = STATE_START;
 		index++;
 	}
-	
+
 	if(state == STATE_CRLFCRLF) {
 		/* FOUND CRLF-CRLF */
 		/* convert to lower case */
 		CONVERT_TO_LOWER(_method, i);
-		get_response(out_buf);
+		response_size = get_response(out_buf);
 	} else {
 		/* Could not find CRLF-CRLF*/
 		printf("Failed: Could not find CRLF-CRLF\n");
 	}
 		
-	printf("%s", out_buf);
-	return 0;
+	printf("%s: %d", out_buf, response_size);
+	return response_size;
 }
 
-void get_response(char * out_buf) {
+int get_response(char * out_buf) {
 	/* find uri status */
 	int i;
 	int fd;
-	int response_len;
+	int response_len, append_len;
 	off_t total_size;
 	enum status code = S_200_OK;
 	char status_message[TINY_BUF_SIZE];	
@@ -139,6 +142,7 @@ void get_response(char * out_buf) {
     char current_time[TINY_BUF_SIZE], last_modified_time[TINY_BUF_SIZE];
     char content_type[TINY_BUF_SIZE];
     char surfix_buf[TINY_BUF_SIZE];
+    char www_path[SMALL_BUF_SIZE];
     char * char_tmp;
     char response_body[BUF_SIZE];
     off_t read_size, body_size;
@@ -148,23 +152,29 @@ void get_response(char * out_buf) {
     time(&timer);
 	asctime_r(localtime(&timer), current_time);	
 	current_time[strlen(current_time) - 1] = '\0'; /* remove \n */
+	/* generate the whole path */
+	memset(www_path, 0, SMALL_BUF_SIZE);
+	strcat(www_path, _www_root);
+	strcat(www_path, _uri);
 	/* get file info */
 	if(is_bad_request)
 		code = S_400_BAD_REQUEST;
-	if(stat(_uri, &statbuf) < 0) 
+	if(stat(www_path, &statbuf) < 0) 
 		code = S_404_NOT_FOUND;
 	else {
+		if(S_ISDIR(statbuf.st_mode))
+			strcat(www_path, "/index.html");
 		total_size = statbuf.st_size;
 		/* get last modified time */
 		asctime_r(localtime(&statbuf.st_mtime), last_modified_time);	
 		last_modified_time[strlen(last_modified_time) - 1] = '\0';
 		/* get content type */
-		char_tmp = strrchr(_uri, '.');
+		char_tmp = strrchr(www_path, '.');
 		memcpy(surfix_buf, char_tmp, strlen(char_tmp));
 		CONVERT_TO_LOWER(surfix_buf, i);
 		MAP_SURFIX_TO_TYPE(surfix_buf, content_type, i);
 		if(!strcmp(_method, "get")) {
-			if((fd = open(_uri, O_RDONLY)) < 0)
+			if((fd = open(www_path, O_RDONLY)) < 0)
 				code = S_500_INTERNAL_SERVER_ERROR;
 			else {
 				read_size = MIN(total_size, BUF_SIZE);
@@ -173,9 +183,9 @@ void get_response(char * out_buf) {
 			}
 		}
 		else if(!strcmp(_method, "head"))
-			;
+			body_size = 0;
 		else if(!strcmp(_method, "post"))
-			; 
+			body_size = 0; 
 		else
 			code = S_501_NOT_IMPLEMENTED; 
 	}
@@ -188,10 +198,15 @@ void get_response(char * out_buf) {
 			content_type, _server_header, _connect_header);
 		/* append body to the header */
 		response_len = strlen(out_buf);
-		memcpy(out_buf, response_body, MIN(body_size, BUF_SIZE - response_len));
+		append_len = MIN(body_size, BUF_SIZE - response_len);
+		if(append_len > 0)
+			memcpy(out_buf + response_len, response_body, append_len);
+		return response_len + append_len;
 	} else {
 		sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 
 			status_message, current_time, _server_header, _connect_header);
+		response_len = strlen(out_buf);
+		return response_len;
 	}
 }
 
@@ -216,6 +231,7 @@ off_t get_body(int fd, char * out_buf, off_t size) {
 
 int get_message(enum status code, char * msg) {
 	char * msg_tmp;
+	int msg_len;
 	switch(code) {
 		case S_200_OK:
 			msg_tmp = "200 OK";
@@ -242,7 +258,10 @@ int get_message(enum status code, char * msg) {
 			msg_tmp = "505 HTTP VERSION NOT SUPPORTED";
 			break;
 	}
-	memcpy(msg, msg_tmp, strlen(msg_tmp));
+	msg_len = strlen(msg_tmp);
+	memcpy(msg, msg_tmp, msg_len);
+	msg[msg_len] = '\0';
+	return 1;
 }
 
 int HandleHTTPS(char * buf, int bufSize, char * out_buf) {
