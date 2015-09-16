@@ -170,7 +170,7 @@ int get_response(char * out_buf) {
 		last_modified_time[strlen(last_modified_time) - 1] = '\0';
 		/* get content type */
 		char_tmp = strrchr(www_path, '.');
-		memcpy(surfix_buf, char_tmp, strlen(char_tmp));
+		memcpy(surfix_buf, char_tmp, strlen(char_tmp) + 1);
 		CONVERT_TO_LOWER(surfix_buf, i);
 		MAP_SURFIX_TO_TYPE(surfix_buf, content_type, i);
 		if(!strcmp(_method, "get")) {
@@ -201,11 +201,11 @@ int get_response(char * out_buf) {
 		append_len = MIN(body_size, BUF_SIZE - response_len);
 		if(append_len > 0)
 			memcpy(out_buf + response_len, response_body, append_len);
-		return response_len + append_len;
+		return response_len + (append_len == 0 ? 1 : append_len);
 	} else {
 		sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 
 			status_message, current_time, _server_header, _connect_header);
-		response_len = strlen(out_buf);
+		response_len = strlen(out_buf) + 1;
 		return response_len;
 	}
 }
@@ -259,8 +259,7 @@ int get_message(enum status code, char * msg) {
 			break;
 	}
 	msg_len = strlen(msg_tmp);
-	memcpy(msg, msg_tmp, msg_len);
-	msg[msg_len] = '\0';
+	memcpy(msg, msg_tmp, msg_len + 1);
 	return 1;
 }
 
