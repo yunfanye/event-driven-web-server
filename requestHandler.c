@@ -33,6 +33,11 @@ char _prot[SMALL_BUF_SIZE];
 char _token[SMALL_BUF_SIZE];
 char _text[SMALL_BUF_SIZE];
 
+char _www_path[SMALL_BUF_SIZE];
+char _has_remain_bytes;
+off_t _remain_bytes;
+off_t _file_offset;
+
 extern char _www_root[SMALL_BUF_SIZE];
 
 enum parse_state {
@@ -141,8 +146,7 @@ int get_response(char * out_buf) {
 	time_t timer;
     char current_time[TINY_BUF_SIZE], last_modified_time[TINY_BUF_SIZE];
     char content_type[TINY_BUF_SIZE];
-    char surfix_buf[TINY_BUF_SIZE];
-    char www_path[SMALL_BUF_SIZE];
+    char surfix_buf[TINY_BUF_SIZE];    
     char * char_tmp;
     char response_body[BUF_SIZE];
     off_t read_size, body_size;
@@ -153,33 +157,34 @@ int get_response(char * out_buf) {
 	asctime_r(localtime(&timer), current_time);	
 	current_time[strlen(current_time) - 1] = '\0'; /* remove \n */
 	/* generate the whole path */
-	memset(www_path, 0, SMALL_BUF_SIZE);
-	strcat(www_path, _www_root);
-	strcat(www_path, _uri);
+	memset(_www_path, 0, SMALL_BUF_SIZE);
+	strcat(_www_path, _www_root);
+	strcat(_www_path, _uri);
 	/* get file info */
 	if(is_bad_request)
 		code = S_400_BAD_REQUEST;
-	if(stat(www_path, &statbuf) < 0) 
+	if(stat(_www_path, &statbuf) < 0) 
 		code = S_404_NOT_FOUND;
 	else {
 		if(S_ISDIR(statbuf.st_mode))
-			strcat(www_path, "/index.html");
+			strcat(_www_path, "/index.html");
 		total_size = statbuf.st_size;
 		/* get last modified time */
 		asctime_r(localtime(&statbuf.st_mtime), last_modified_time);	
 		last_modified_time[strlen(last_modified_time) - 1] = '\0';
 		/* get content type */
-		char_tmp = strrchr(www_path, '.');
+		char_tmp = strrchr(_www_path, '.');
 		memcpy(surfix_buf, char_tmp, strlen(char_tmp) + 1);
 		CONVERT_TO_LOWER(surfix_buf, i);
 		MAP_SURFIX_TO_TYPE(surfix_buf, content_type, i);
 		if(!strcmp(_method, "get")) {
-			if((fd = open(www_path, O_RDONLY)) < 0)
+			if((fd = open_file(_www_path, O_RDONLY)) < 0)
 				code = S_500_INTERNAL_SERVER_ERROR;
 			else {
 				read_size = MIN(total_size, BUF_SIZE);
 				if((body_size = get_body(fd, response_body, read_size)) != read_size)
 					code = S_503_SERVICE_UNAVAILABLE;
+				close_file(fd);
 			}
 		}
 		else if(!strcmp(_method, "head"))
@@ -198,9 +203,17 @@ int get_response(char * out_buf) {
 			content_type, _server_header, _connect_header);
 		/* append body to the header */
 		response_len = strlen(out_buf);
-		append_len = MIN(body_size, BUF_SIZE - response_len);
-		if(append_len > 0)
+		append_len = MIN(body_size, BUF_SIZE - response_len);		
+		if(append_len > 0) {
 			memcpy(out_buf + response_len, response_body, append_len);
+		}
+		/* for big files, write when buf is full; hence record the remain */
+		_has_remain_bytes = 0;
+		if(total_size > append_len) {
+			_has_remain_bytes = 1;
+			_remain_bytes = total_size - append_len;
+			_file_offset = append_len;
+		}
 		return response_len + (append_len == 0 ? 1 : append_len);
 	} else {
 		sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 

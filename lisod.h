@@ -58,6 +58,11 @@ struct fdWrap {
 	char buf[BUF_SIZE];
 	enum protocol prot;
 	struct fdWrap * next;
+	/* the following only used in write */
+	char has_remain;	
+	off_t remain_bytes;
+	off_t offset;
+	char path[SMALL_BUF_SIZE];
 } * readHead, * writeHead;
 
 /* global variables */
@@ -65,5 +70,10 @@ int http_sock, https_sock;
 int log_fd;
 
 char _www_root[SMALL_BUF_SIZE];
+
+extern char _www_path[SMALL_BUF_SIZE];
+extern char _has_remain_bytes;
+extern off_t _remain_bytes;
+extern off_t _file_offset;
 
 #endif

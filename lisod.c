@@ -48,6 +48,8 @@ int main(int argc, char* argv[])
     struct fdWrap * tempFdWrap, * loopFdWrap, * prevFdWrap;
     char buf[BUF_SIZE];
     int www_root_len;
+    char reload_success;
+    int write_remain_fd, read_remain_len;
     
     fprintf(stdout, "----- Echo Server -----\n");	
     
@@ -245,17 +247,21 @@ int main(int argc, char* argv[])
        							loopFdWrap -> bufSize, buf);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
-       							loopFdWrap -> bufSize, buf);
-#ifdef DEBUG
-    	    		fprintf(stdout, "response: %d\n", responseSize);
-#endif    
+       							loopFdWrap -> bufSize, buf);       					
     					if(responseSize > 0) {
     						/* request processed; then respond, 
     						 * i.e. keep it in write buf and
        						 * add new client fd to write list */
        						ADD_LINKEDLIST_NODE(writeHead, loopFdWrap -> fd);    					
        						memcpy(writeHead -> buf, buf, responseSize);
-							writeHead -> bufSize = responseSize;					
+							writeHead -> bufSize = responseSize;
+							/* for big files, write the remaining when write */
+							writeHead -> has_remain = _has_remain_bytes;
+							if(_has_remain_bytes) {
+								writeHead -> remain_bytes = _remain_bytes;
+								writeHead -> offset = _file_offset;
+								strcpy(writeHead -> path, _www_path);
+							}		
     						/* a new write */
     						FD_SET(writeHead -> fd, &writeValid);
     						loopFdWrap -> bufSize = 0;
@@ -337,9 +343,42 @@ int main(int argc, char* argv[])
            				}
            			}
            			else {
-						FD_CLR(loopFdWrap -> fd, &writeValid);
-						REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
-							writeHead);						
+           				/* if there are remaining bytes, reload the buf;
+           				 * here may cause an issue: file operation may fail,
+           				 * while the header has been sent. Thus, even if 
+           				 * error occurs, error code cannot be sent to client.
+           				 * However, the FAQ has this requirement, i.e.
+           				 * "Try to send a 'full buffer' of the file from disk
+           				 * every time" */           				 
+           				reload_success = 0;
+           				if(loopFdWrap -> has_remain) {          					
+							if((write_remain_fd = open_file(loopFdWrap -> path,
+								O_RDONLY)) >= 0) {
+								/* move pointer to offset */
+								lseek(write_remain_fd, loopFdWrap -> offset,
+									SEEK_SET);
+								read_remain_len = 
+									MIN(loopFdWrap -> remain_bytes, BUF_SIZE);
+								if(get_body(write_remain_fd, loopFdWrap -> buf, 
+									read_remain_len) == read_remain_len) {
+									reload_success = 1;
+									loopFdWrap -> bufSize = read_remain_len;
+									loopFdWrap -> offset += read_remain_len;
+									loopFdWrap -> remain_bytes -= 
+										read_remain_len;
+								}
+								/* close immediately to prevent being limited
+								 * by slow client*/
+								close_file(write_remain_fd);
+							}													
+           				}
+           				if(reload_success)
+           					loopFdWrap = loopFdWrap -> next; 
+           				else {
+							FD_CLR(loopFdWrap -> fd, &writeValid);
+							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
+								writeHead);	
+						}					
            			}
     			}
     			else {

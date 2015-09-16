@@ -10,7 +10,7 @@
 
 default: lisod
 
-lisod: lisod.o requestHandler.o y.tab.o lex.yy.o
+lisod: common.o lisod.o requestHandler.o y.tab.o lex.yy.o 
 	@gcc $^ -o lisod -Wall -Werror
 
 echo_client:
@@ -18,6 +18,9 @@ echo_client:
 	
 lex.yy.c: lexer.l
 	flex $^
+
+common.o: common.c
+	gcc -g -c $^ -o $@
 
 lisod.o: lisod.c
 	gcc -g -c $^ -o $@
@@ -38,4 +41,4 @@ clean:
 	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c
 	
 handin:
-	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py)
+	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2)
