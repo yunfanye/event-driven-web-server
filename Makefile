@@ -10,11 +10,20 @@
 
 default: lisod
 
-lisod:
-	@gcc lisod.c requestHandler.c -o lisod -Wall -Werror
+lisod: lisod.o requestHandler.o y.tab.o lex.yy.o
+	@gcc $^ -o lisod -Wall -Werror
 
 echo_client:
 	@gcc echo_client.c -o echo_client -Wall -Werror
+	
+lex.yy.c: lexer.l
+	flex $^
+
+%.o: %.c
+	gcc -g -c $^ -o $@
+
+y.tab.c: parser.y
+	yacc -d $^
 
 clean:
 	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz

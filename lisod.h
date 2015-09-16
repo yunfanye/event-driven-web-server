@@ -1,7 +1,6 @@
-/* if bytes sent exceed BUF_SIZE, then it will proceed it by several reads */
-#define BUF_SIZE 40960
+#ifndef _LISOD
+#define _LISOD
 
-#define MAX(x, y)  ((x) > (y) ? (x) : (y))
 /* only C99 support inline function, so just use macros */
 /* remove and free a wrap node from the linked list
  * prevFdWrap == NULL only if loopFdWrap == head */	
@@ -61,3 +60,5 @@ struct fdWrap {
 /* global variables */
 int http_sock, https_sock;
 int log_fd;
+
+#endif

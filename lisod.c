@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include "requestHandler.h"
 #include "lisod.h"
+#include "common.h"
 
 
 
@@ -240,10 +241,10 @@ int main(int argc, char* argv[])
     					/* proceed request and generate response */
        					if(loopFdWrap -> prot == HTTP)
        						responseSize = HandleHTTP(loopFdWrap -> buf,
-       							&loopFdWrap -> bufSize, buf);
+       							loopFdWrap -> bufSize, buf);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
-       							&loopFdWrap -> bufSize, buf);
+       							loopFdWrap -> bufSize, buf);
     					if(responseSize > 0) {
     						/* request processed; then respond, 
     						 * i.e. keep it in write buf and
