@@ -13,6 +13,7 @@
 
 const char * _server_header = "Server: Liso/1.0\r\n";
 const char * _connect_header = "Connection: close\r\n";
+const char * error_msg_tpl = "<head><title>Error response</title></head><body><h1>Error response</h1><p>Error: %s</p></body>";
 
 struct type_map {
 	char surfix[TINY_BUF_SIZE];
@@ -149,6 +150,7 @@ int get_response(char * out_buf) {
     char surfix_buf[TINY_BUF_SIZE];    
     char * char_tmp;
     char response_body[BUF_SIZE];
+    char error_msg[SMALL_BUF_SIZE];
     off_t read_size, body_size;
     struct stat statbuf;            /* file statistics */
     
@@ -160,6 +162,8 @@ int get_response(char * out_buf) {
 	memset(_www_path, 0, SMALL_BUF_SIZE);
 	strcat(_www_path, _www_root);
 	strcat(_www_path, _uri);
+	/* init */
+	_has_remain_bytes = 0;
 	/* get file info */
 	if(is_bad_request)
 		code = S_400_BAD_REQUEST;
@@ -207,8 +211,7 @@ int get_response(char * out_buf) {
 		if(append_len > 0) {
 			memcpy(out_buf + response_len, response_body, append_len);
 		}
-		/* for big files, write when buf is full; hence record the remain */
-		_has_remain_bytes = 0;
+		/* for big files, write when buf is full; hence record the remain */		
 		if(total_size > append_len) {
 			_has_remain_bytes = 1;
 			_remain_bytes = total_size - append_len;
@@ -216,8 +219,22 @@ int get_response(char * out_buf) {
 		}
 		return response_len + (append_len == 0 ? 1 : append_len);
 	} else {
-		sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 
-			status_message, current_time, _server_header, _connect_header);
+		/* In reality, when users encounters an error, say 404, they should
+		 * be redirected to the corresponding page, say 404.html; yet in this
+		 * tiny server, we just print the message */
+		
+		if(!strcmp(_method, "head")) {
+			sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 
+				status_message, current_time, _server_header, _connect_header);
+		}
+		else {
+			sprintf(error_msg, error_msg_tpl, status_message);
+			response_len = strlen(error_msg);
+			sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n"
+				"Content-Length: %d\r\n%s%s\r\n%s", 
+				status_message, current_time, response_len, 
+				_server_header, _connect_header, error_msg);
+		}
 		response_len = strlen(out_buf) + 1;
 		return response_len;
 	}
