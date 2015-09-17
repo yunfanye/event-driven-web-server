@@ -215,7 +215,7 @@ int get_response(char * out_buf) {
 			memcpy(out_buf + response_len, response_body, append_len);
 		}
 		/* for big files, write when buf is full; hence record the remain */		
-		if(total_size > append_len) {
+		if(!strcmp(_method, "get") && total_size > append_len) {
 			_has_remain_bytes = 1;
 			_remain_bytes = total_size - append_len;
 			_file_offset = append_len;
