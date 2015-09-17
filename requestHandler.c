@@ -98,7 +98,8 @@ int HandleHTTP(char * buf, int buf_size, char * out_buf) {
 					last_index = index;
 				} else {
 					memcpy(work_buf, buf, index - 2);
-					work_buf[index + 1] = '\0';
+					work_buf[index - 2] = '\0';
+					printf("%s\r\n", work_buf);
 					if(sscanf(work_buf, "%s %s %s", _method, _uri, _prot) != 3)
 						is_bad_request = 1;
 					had_request_line = 1;
@@ -129,10 +130,9 @@ int HandleHTTP(char * buf, int buf_size, char * out_buf) {
 		response_size = get_response(out_buf);
 	} else {
 		/* Could not find CRLF-CRLF*/
+		response_size = 0;
 		printf("Failed: Could not find CRLF-CRLF\n");
 	}
-		
-	printf("%s: %d", out_buf, response_size);
 	return response_size;
 }
 
@@ -166,13 +166,20 @@ int get_response(char * out_buf) {
 	/* init */
 	_has_remain_bytes = 0;
 	/* get file info */
+
 	if(is_bad_request)
 		code = S_400_BAD_REQUEST;
-	if(stat(_www_path, &statbuf) < 0) 
+	else if(strcmp(_prot, "HTTP/1.1"))
+		code = S_505_HTTP_VERSION_NOT_SUPPORTED;
+	else if(stat(_www_path, &statbuf) < 0) 
 		code = S_404_NOT_FOUND;
 	else {
-		if(S_ISDIR(statbuf.st_mode))
-			strcat(_www_path, "/index.html");
+		if(S_ISDIR(statbuf.st_mode)) {
+			strcat(_www_path, "index.html");
+			if(stat(_www_path, &statbuf) < 0) 
+				code = S_404_NOT_FOUND;
+		}
+		printf("path: %s\r\n", _www_path);
 		total_size = statbuf.st_size;
 		/* get last modified time */
 		strftime(last_modified_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S",
@@ -297,5 +304,6 @@ int get_message(enum status code, char * msg) {
 }
 
 int HandleHTTPS(char * buf, int bufSize, char * out_buf) {
-	return 0;
+	memcpy(out_buf, buf, bufSize);
+	return bufSize;
 }

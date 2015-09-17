@@ -41,10 +41,7 @@ int close_socket(int sock);
 void error_exit(char * msg);
 
 #ifdef DEBUG
-void sigint_handler(int sig) {
-	/* do nothing, just test the performance when being interrupted */
-    return;
-}
+void sigint_handler(int sig);
 #endif
 
 enum protocol {

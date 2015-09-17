@@ -366,6 +366,8 @@ int main(int argc, char* argv[])
 									loopFdWrap -> offset += read_remain_len;
 									loopFdWrap -> remain_bytes -= 
 										read_remain_len;
+									if(loopFdWrap -> remain_bytes == 0)
+										loopFdWrap -> has_remain = 0;
 								}
 								/* close immediately to prevent being limited
 								 * by slow client*/
@@ -436,4 +438,12 @@ void error_exit(char * msg) {
 		close(log_fd);
 	exit(EXIT_FAILURE);
 }
+
+#ifdef DEBUG
+void sigint_handler(int sig) {
+	/* do nothing, just test the performance when being interrupted -- cp1 */
+	error_exit("SIG INT caught\r\n");
+    return;
+}
+#endif
 
