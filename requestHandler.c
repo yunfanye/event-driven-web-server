@@ -11,7 +11,7 @@
 #include <errno.h>
 
 
-const char * _server_header = "Server: Liso/1.0\r\n";
+const char * _server_header = "Server: Liso/1.0 \r\n";
 const char * _connect_header = "Connection: close\r\n";
 const char * error_msg_tpl = "<head><title>Error response</title></head><body><h1>Error response</h1><p>Error: %s</p></body>";
 
@@ -156,8 +156,9 @@ int get_response(char * out_buf) {
     
 	/* get current time */
     time(&timer);
-	asctime_r(localtime(&timer), current_time);	
-	current_time[strlen(current_time) - 1] = '\0'; /* remove \n */
+    strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S GMT", 
+    	localtime(&timer));
+	current_time[strlen(current_time)] = '\0'; /* remove \n */
 	/* generate the whole path */
 	memset(_www_path, 0, SMALL_BUF_SIZE);
 	strcat(_www_path, _www_root);
@@ -174,8 +175,9 @@ int get_response(char * out_buf) {
 			strcat(_www_path, "/index.html");
 		total_size = statbuf.st_size;
 		/* get last modified time */
-		asctime_r(localtime(&statbuf.st_mtime), last_modified_time);	
-		last_modified_time[strlen(last_modified_time) - 1] = '\0';
+		strftime(last_modified_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S",
+    		localtime(&statbuf.st_mtime));	
+		last_modified_time[strlen(last_modified_time)] = '\0';
 		/* get content type */
 		char_tmp = strrchr(_www_path, '.');
 		memcpy(surfix_buf, char_tmp, strlen(char_tmp) + 1);
@@ -201,10 +203,11 @@ int get_response(char * out_buf) {
 	
 	get_message(code, status_message);
 	if(code == S_200_OK) {
-		sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\nLast-Modified: %s\r\n"
-			"Content-Length: %lu\r\nContent-Type: %s\r\n%s%s\r\n", 
-			status_message, current_time, last_modified_time, total_size,
-			content_type, _server_header, _connect_header);
+		sprintf(out_buf, "HTTP/1.1 %s\r\n" "%s" "Date: %s\r\n" "%s"
+			"Content-Type: %s\r\n" "Content-Length: %lu\r\n" 
+			"Last-Modified: %s \r\n\r\n", status_message, _server_header, 
+			current_time, _connect_header, content_type, total_size,
+			last_modified_time);
 		/* append body to the header */
 		response_len = strlen(out_buf);
 		append_len = MIN(body_size, BUF_SIZE - response_len);		
