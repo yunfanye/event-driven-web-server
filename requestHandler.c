@@ -157,7 +157,7 @@ int get_response(char * out_buf) {
 	/* get current time */
     time(&timer);
     strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S GMT", 
-    	localtime(&timer));
+    	gmtime(&timer));
 	current_time[strlen(current_time)] = '\0'; /* remove \n */
 	/* generate the whole path */
 	memset(_www_path, 0, SMALL_BUF_SIZE);
@@ -182,8 +182,8 @@ int get_response(char * out_buf) {
 		printf("path: %s\r\n", _www_path);
 		total_size = statbuf.st_size;
 		/* get last modified time */
-		strftime(last_modified_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S",
-    		localtime(&statbuf.st_mtime));	
+		strftime(last_modified_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S %Z",
+    		gmtime(&statbuf.st_mtime));	
 		last_modified_time[strlen(last_modified_time)] = '\0';
 		/* get content type */
 		char_tmp = strrchr(_www_path, '.');
@@ -234,14 +234,16 @@ int get_response(char * out_buf) {
 		 * tiny server, we just print the message */
 		
 		if(!strcmp(_method, "head")) {
-			sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n%s%s\r\n", 
+			sprintf(out_buf, "HTTP/1.1 %s\r\n" "Date: %s\r\n"
+				"%s" "Content-Type: text/html\r\n" "%s\r\n",
 				status_message, current_time, _server_header, _connect_header);
 		}
 		else {
 			sprintf(error_msg, error_msg_tpl, status_message);
 			response_len = strlen(error_msg);
-			sprintf(out_buf, "HTTP/1.1 %s\r\nDate: %s\r\n"
-				"Content-Length: %d\r\n%s%s\r\n%s", 
+			sprintf(out_buf, "HTTP/1.1 %s\r\n" "Date: %s\r\n" 
+				"Content-Length: %d\r\n" "%s"
+				"Content-Type: text/html\r\n" "%s\r\n%s", 
 				status_message, current_time, response_len, 
 				_server_header, _connect_header, error_msg);
 		}

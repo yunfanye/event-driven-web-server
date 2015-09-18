@@ -377,6 +377,7 @@ int main(int argc, char* argv[])
            				if(reload_success)
            					loopFdWrap = loopFdWrap -> next; 
            				else {
+           					shutdown(loopFdWrap -> fd, SHUT_WR);
 							FD_CLR(loopFdWrap -> fd, &writeValid);
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
 								writeHead);	
