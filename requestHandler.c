@@ -140,14 +140,30 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	}
 
 	if(state == STATE_CRLFCRLF) {
-		/* FOUND CRLF-CRLF */
-		/* convert to lower case */
-		CONVERT_TO_LOWER(_method, i);
+		/* FOUND CRLF-CRLF, header ends */
+		/* if it is a post request without content length header, return 411 */
+		if(code != S_400_BAD_REQUEST && 
+			!has_content_len && !strcmp(_method, "post"))
+			code = S_411_LENGTH_REQUIRED;
+		/* get response */
 		response_size = get_response(out_buf);
+				
+		/* for valid http packet, log the ip address, webbrowser & code */
+		if(is_set_browser)
+			msg_log("User-Agent", browser_info);
+		/* get and log the ip address & port */
+		peer_len = sizeof(struct sockaddr_in);
+		getpeername(socket, (struct sockaddr *) &peer_addr, &peer_len);
+		/* we focus on only ipv4, i.e. sin_familiy is AF_INET */
+		peer_port = ntohs(peer_addr.sin_port);
+		sprintf(addition_info, ":%d -- %s", peer_port, status_message);
+		inet_ntop(AF_INET, &peer_addr.sin_addr, ip_addr, TINY_BUF_SIZE);
+		strcat(ip_addr, addition_info);
+		msg_log("IP", ip_addr);
 	} else {
 		/* Could not find CRLF-CRLF*/
 		response_size = 0;
-		printf("Failed: Could not find CRLF-CRLF\n");
+		error_log("Failed: Could not find CRLF-CRLF\n");
 	}
 	return response_size;
 }
@@ -158,8 +174,6 @@ int get_response(char * out_buf) {
 	int fd;
 	int response_len, append_len;
 	off_t total_size;
-	enum status code = S_200_OK;
-	char status_message[TINY_BUF_SIZE];	
 	time_t timer;
     char current_time[TINY_BUF_SIZE], last_modified_time[TINY_BUF_SIZE];
     char content_type[TINY_BUF_SIZE];
@@ -170,9 +184,9 @@ int get_response(char * out_buf) {
     off_t read_size, body_size;
     struct stat statbuf;            /* file statistics */
     
-	/* get current time */
+	/* get current time in GMT */
     time(&timer);
-    strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S GMT", 
+    strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S %Z", 
     	gmtime(&timer));
 	current_time[strlen(current_time)] = '\0'; /* remove \n */
 	/* generate the whole path */
@@ -184,7 +198,7 @@ int get_response(char * out_buf) {
 	/* get file info */
 
 	if(code != S_200_OK)
-		;
+		;/* do something to handle pervious error */
 	else if(strcmp(_prot, "HTTP/1.1"))
 		code = S_505_HTTP_VERSION_NOT_SUPPORTED;
 	else if(stat(_www_path, &statbuf) < 0) 
@@ -195,9 +209,12 @@ int get_response(char * out_buf) {
 			if(stat(_www_path, &statbuf) < 0) 
 				code = S_404_NOT_FOUND;
 		}
-		printf("path: %s\r\n", _www_path);
+		/* Check whether the file has read permission for vistors */
+		if(!(statbuf.st_mode & S_IROTH))
+			code = S_403_FORBIDDEN;
+		/* get total file size */
 		total_size = statbuf.st_size;
-		/* get last modified time */
+		/* get last modified time in GMT */
 		strftime(last_modified_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S %Z",
     		gmtime(&statbuf.st_mtime));	
 		last_modified_time[strlen(last_modified_time)] = '\0';
@@ -219,9 +236,9 @@ int get_response(char * out_buf) {
 		else if(!strcmp(_method, "head"))
 			body_size = 0;
 		else if(!strcmp(_method, "post"))
-			body_size = 0; 
+			body_size = 0; /* ignore post request right now */
 		else
-			code = S_501_NOT_IMPLEMENTED; 
+			code = S_501_NOT_IMPLEMENTED;
 	}
 	
 	get_message(code, status_message);
@@ -268,6 +285,7 @@ int get_response(char * out_buf) {
 	}
 }
 
+/* read until size bytes */
 off_t get_body(int fd, char * out_buf, off_t size) {
     off_t readleft = size;
     off_t readret;
@@ -297,6 +315,9 @@ int get_message(enum status code, char * msg) {
 		case S_400_BAD_REQUEST:
 			msg_tmp = "400 BAD REQUEST";
 			break;
+		case S_403_FORBIDDEN:
+			msg_tmp = "403 FORBIDDEN";
+			break;		
     	case S_404_NOT_FOUND:
 			msg_tmp = "404 NOT FOUND";
 			break;
