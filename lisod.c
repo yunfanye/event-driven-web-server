@@ -1,5 +1,5 @@
 /****************************************************************************
-* echo_server.c																*
+* lisod.c																	*
 * 																		 	*
 * Description: This file built on the provided starter code. contains the C	*
 *			   source code for an echo server. The server runs on ports		*
@@ -110,11 +110,14 @@ int main(int argc, char* argv[])
     
     if((log_fd = open(log_file, (O_RDWR | O_CREAT))) < 0) 
     	error_exit("Cannot open log file.");
-    /* Redirect stderr to stdout (so that we will get all output
-     * on the pipe connected to stdout) */
-    if(dup2(1, 2) < 0)
-    	error_exit("Cannot redirect stderr to stdout");
-    /* redirect stdout to log_file */
+    /* Save stderr, and redirect stderr to log file */
+    if((_saved_stderr = dup(STDERR_FILENO)) < 0)
+    	error_exit("Cannot save stderr");
+    if(dup2(log_fd, STDERR_FILENO) < 0)
+    	error_exit("Cannot redirect stderr to log file");
+    /* Save stdout, and redirect stdout to log_file */
+    if((_saved_stdout = dup(STDOUT_FILENO)) < 0)
+    	error_exit("Cannot save stdout");
     if (dup2(log_fd, STDOUT_FILENO) < 0)
     	error_exit("Cannot redirect stdout to log file");
 
@@ -244,7 +247,7 @@ int main(int argc, char* argv[])
 					
        					if(loopFdWrap -> prot == HTTP)
        						responseSize = HandleHTTP(loopFdWrap -> buf,
-       							loopFdWrap -> bufSize, buf);
+       							&loopFdWrap -> bufSize, buf, loopFdWrap -> fd);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
        							loopFdWrap -> bufSize, buf);       					
@@ -331,6 +334,8 @@ int main(int argc, char* argv[])
     	    					strerror(errno));
 #endif
            					if(errno != EINTR) {
+           						/* send a fin to notify the client */
+           						shutdown(loopFdWrap -> fd, SHUT_WR);
            						FD_CLR(loopFdWrap -> fd, &readValid);
            						FD_CLR(loopFdWrap -> fd, &writeValid);
             					/* remove and free a write wrap from the linked
@@ -351,7 +356,8 @@ int main(int argc, char* argv[])
            				 * "Try to send a 'full buffer' of the file from disk
            				 * every time" */           				 
            				reload_success = 0;
-           				if(loopFdWrap -> has_remain) {          					
+           				if(loopFdWrap -> has_remain) {
+           					/* has remaining bytes to send, reload the buf */          					
 							if((write_remain_fd = open_file(loopFdWrap -> path,
 								O_RDONLY)) >= 0) {
 								/* move pointer to offset */
@@ -377,6 +383,7 @@ int main(int argc, char* argv[])
            				if(reload_success)
            					loopFdWrap = loopFdWrap -> next; 
            				else {
+           					/* send a fin to notify the client */
            					shutdown(loopFdWrap -> fd, SHUT_WR);
 							FD_CLR(loopFdWrap -> fd, &writeValid);
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
