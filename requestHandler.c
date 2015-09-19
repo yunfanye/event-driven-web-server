@@ -140,30 +140,14 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	}
 
 	if(state == STATE_CRLFCRLF) {
-		/* FOUND CRLF-CRLF, header ends */
-		/* if it is a post request without content length header, return 411 */
-		if(code != S_400_BAD_REQUEST && 
-			!has_content_len && !strcmp(_method, "post"))
-			code = S_411_LENGTH_REQUIRED;
-		/* get response */
+		/* FOUND CRLF-CRLF */
+		/* convert to lower case */
+		CONVERT_TO_LOWER(_method, i);
 		response_size = get_response(out_buf);
-				
-		/* for valid http packet, log the ip address, webbrowser & code */
-		if(is_set_browser)
-			msg_log("User-Agent", browser_info);
-		/* get and log the ip address & port */
-		peer_len = sizeof(struct sockaddr_in);
-		getpeername(socket, (struct sockaddr *) &peer_addr, &peer_len);
-		/* we focus on only ipv4, i.e. sin_familiy is AF_INET */
-		peer_port = ntohs(peer_addr.sin_port);
-		sprintf(addition_info, ":%d -- %s", peer_port, status_message);
-		inet_ntop(AF_INET, &peer_addr.sin_addr, ip_addr, TINY_BUF_SIZE);
-		strcat(ip_addr, addition_info);
-		msg_log("IP", ip_addr);
 	} else {
 		/* Could not find CRLF-CRLF*/
 		response_size = 0;
-		error_log("Failed: Could not find CRLF-CRLF\n");
+		printf("Failed: Could not find CRLF-CRLF\n");
 	}
 	return response_size;
 }
@@ -174,6 +158,8 @@ int get_response(char * out_buf) {
 	int fd;
 	int response_len, append_len;
 	off_t total_size;
+	enum status code = S_200_OK;
+	char status_message[TINY_BUF_SIZE];	
 	time_t timer;
     char current_time[TINY_BUF_SIZE], last_modified_time[TINY_BUF_SIZE];
     char content_type[TINY_BUF_SIZE];
@@ -184,9 +170,9 @@ int get_response(char * out_buf) {
     off_t read_size, body_size;
     struct stat statbuf;            /* file statistics */
     
-	/* get current time in GMT */
+	/* get current time */
     time(&timer);
-    strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S %Z", 
+    strftime(current_time, TINY_BUF_SIZE, "%a, %d %h %Y %H:%M:%S GMT", 
     	gmtime(&timer));
 	current_time[strlen(current_time)] = '\0'; /* remove \n */
 	/* generate the whole path */
@@ -196,7 +182,6 @@ int get_response(char * out_buf) {
 	/* init */
 	_has_remain_bytes = 0;
 	/* get file info */
-
 	if(code != S_200_OK)
 		;/* do something to handle pervious error */
 	else if(strcmp(_prot, "HTTP/1.1"))
@@ -212,6 +197,9 @@ int get_response(char * out_buf) {
 		/* Check whether the file has read permission for vistors */
 		if(!(statbuf.st_mode & S_IROTH))
 			code = S_403_FORBIDDEN;
+	}
+	/* try to read file */
+	if(code == S_200_OK) {
 		/* get total file size */
 		total_size = statbuf.st_size;
 		/* get last modified time in GMT */
@@ -238,16 +226,16 @@ int get_response(char * out_buf) {
 		else if(!strcmp(_method, "post"))
 			body_size = 0; /* ignore post request right now */
 		else
-			code = S_501_NOT_IMPLEMENTED;
+			code = S_501_NOT_IMPLEMENTED; 
 	}
-	
+	/* interpret code to message */
 	get_message(code, status_message);
 	if(code == S_200_OK) {
 		sprintf(out_buf, "HTTP/1.1 %s\r\n" "%s" "Date: %s\r\n" "%s"
-			"Content-Type: %s\r\n" "Content-Length: %lu\r\n" 
+			"Content-Type: %s\r\n" "%s: %lu\r\n" 
 			"Last-Modified: %s \r\n\r\n", status_message, _server_header, 
-			current_time, _connect_header, content_type, total_size,
-			last_modified_time);
+			current_time, _connect_header, content_type, _content_len_token, 
+			total_size, last_modified_time);
 		/* append body to the header */
 		response_len = strlen(out_buf);
 		append_len = MIN(body_size, BUF_SIZE - response_len);		
@@ -275,9 +263,9 @@ int get_response(char * out_buf) {
 			sprintf(error_msg, error_msg_tpl, status_message);
 			response_len = strlen(error_msg);
 			sprintf(out_buf, "HTTP/1.1 %s\r\n" "Date: %s\r\n" 
-				"Content-Length: %d\r\n" "%s"
+				"%s: %d\r\n" "%s"
 				"Content-Type: text/html\r\n" "%s\r\n%s", 
-				status_message, current_time, response_len, 
+				status_message, current_time, _content_len_token, response_len,
 				_server_header, _connect_header, error_msg);
 		}
 		response_len = strlen(out_buf) + 1;
@@ -285,7 +273,6 @@ int get_response(char * out_buf) {
 	}
 }
 
-/* read until size bytes */
 off_t get_body(int fd, char * out_buf, off_t size) {
     off_t readleft = size;
     off_t readret;
@@ -317,7 +304,7 @@ int get_message(enum status code, char * msg) {
 			break;
 		case S_403_FORBIDDEN:
 			msg_tmp = "403 FORBIDDEN";
-			break;		
+			break;
     	case S_404_NOT_FOUND:
 			msg_tmp = "404 NOT FOUND";
 			break;
@@ -335,6 +322,9 @@ int get_message(enum status code, char * msg) {
 			break;
     	case S_505_HTTP_VERSION_NOT_SUPPORTED:
 			msg_tmp = "505 HTTP VERSION NOT SUPPORTED";
+			break;
+		default:
+			msg_tmp = "500 INTERNAL SERVER ERROR";
 			break;
 	}
 	msg_len = strlen(msg_tmp);
