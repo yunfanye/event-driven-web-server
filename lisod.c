@@ -231,9 +231,6 @@ int main(int argc, char* argv[])
     			}
     				
     			if(FD_ISSET(loopFdWrap -> fd, &readset)) {
-#ifdef DEBUG
-    	    		fprintf(stdout, "Begin reading: %d, buf_size: %d.\n", loopFdWrap -> fd, loopFdWrap -> bufSize);
-#endif
     				/* TODO: more specific error handling */
     				readlen = BUF_SIZE - loopFdWrap -> bufSize;
     				if((readret = recv(loopFdWrap -> fd, buf, 
@@ -250,12 +247,12 @@ int main(int argc, char* argv[])
        							&loopFdWrap -> bufSize, buf, loopFdWrap -> fd);
        					else
        						responseSize = HandleHTTPS(loopFdWrap -> buf,
-       							loopFdWrap -> bufSize, buf);       					
+       							loopFdWrap -> bufSize, buf);
     					if(responseSize > 0) {
     						/* request processed; then respond, 
     						 * i.e. keep it in write buf and
        						 * add new client fd to write list */
-       						ADD_LINKEDLIST_NODE(writeHead, loopFdWrap -> fd);    					
+       						ADD_LINKEDLIST_NODE(writeHead, loopFdWrap -> fd);
        						memcpy(writeHead -> buf, buf, responseSize);
 							writeHead -> bufSize = responseSize;
 							/* for big files, write the remaining when write */
@@ -357,7 +354,7 @@ int main(int argc, char* argv[])
            				 * every time" */           				 
            				reload_success = 0;
            				if(loopFdWrap -> has_remain) {
-           					/* has remaining bytes to send, reload the buf */          					
+           					/* has remaining bytes to send, reload the buf */
 							if((write_remain_fd = open_file(loopFdWrap -> path,
 								O_RDONLY)) >= 0) {
 								/* move pointer to offset */

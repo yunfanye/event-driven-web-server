@@ -17,7 +17,8 @@
 const char * _content_len_token = "Content-Length";
 const char * _server_header = "Server: Liso/1.0\r\n";
 const char * _connect_header = "Connection: close\r\n";
-const char * error_msg_tpl = "<head><title>Error response</title></head><body><h1>Error response</h1><p>Error: %s</p></body>";
+const char * error_msg_tpl = "<head><title>Error response</title></head>"
+	"<body><h1>Error response</h1><p>Error: %s</p></body>";
 
 /* surfix content-type mapping table */
 struct type_map _type_map_entries[] = {
@@ -85,23 +86,38 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 		char expected = 0;
 		switch(state) {
 			case STATE_START:
+				/* this function should be further modified in persistent
+				 * connection with POST request; since currently we don't
+				 * deal with this kind of request, ignore it. */
+				/* treat too long header as 4xx BAD REQUEST, reject */
+				if(index > MAX_HEADER_LEN) {
+					/* cut buf to make room and to enable pipeline; since
+					 * it is in STATE_START, this will not break CRLFCRLF */
+					memmove(buf, buf + index, buf_size - index);
+					/* modify the buf size */
+					*ori_buf_size -= index;
+					error_log("Header exceeds maximum size, reject it.\n");
+					return 0;
+				}
 				expected = '\r';
 				break;
 			case STATE_CRLF:
 				/* parse one line */
 				if(had_request_line) {
-					set_parsing_buf(buf + last_index, index - last_index - 2);	
+					set_parsing_buf(buf + last_index, index - last_index - 2);
 					/* yyparse return 0 on success */
 					if(yyparse()) {
 						code = S_400_BAD_REQUEST;
 					}
 					else {
 						/* A post request should have content length */
-						if(!strcmp(_method, "post") && !strcmp(_token, _content_len_token)) {
-							/* parse the text using atoi when post is supported */
+						if(!strcmp(_method, "post") && 
+							!strcmp(_token, _content_len_token)) {
+							/* should parse the text using atoi
+							 * when the length is needed to parse */
 							has_content_len = 1;
 						}
-						if(!strcmp(_token, "User-Agent")) {						
+						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
 							memcpy(browser_info, _text, strlen(_text) + 1);
 						}
@@ -179,7 +195,7 @@ int get_response(char * out_buf) {
 	memset(_www_path, 0, SMALL_BUF_SIZE);
 	strcat(_www_path, _www_root);
 	strcat(_www_path, _uri);
-	/* init */
+	/* init variables */
 	_has_remain_bytes = 0;
 	/* get file info */
 	if(code != S_200_OK)
@@ -216,7 +232,8 @@ int get_response(char * out_buf) {
 				code = S_500_INTERNAL_SERVER_ERROR;
 			else {
 				read_size = MIN(total_size, BUF_SIZE);
-				if((body_size = get_body(fd, response_body, read_size)) != read_size)
+				if((body_size = get_body(fd, response_body, read_size))
+					!= read_size)
 					code = S_503_SERVICE_UNAVAILABLE;
 				close_file(fd);
 			}
@@ -242,7 +259,7 @@ int get_response(char * out_buf) {
 		if(append_len > 0) {
 			memcpy(out_buf + response_len, response_body, append_len);
 		}
-		/* for big files, write when buf is full; hence record the remain */		
+		/* for big files, write when buf is full; hence record the remain */	
 		if(!strcmp(_method, "get") && total_size > append_len) {
 			_has_remain_bytes = 1;
 			_remain_bytes = total_size - append_len;
