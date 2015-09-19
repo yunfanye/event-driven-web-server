@@ -2,7 +2,7 @@
 #define _LISOD
 
 /* uncomment the following line to debug */
-#define DEBUG
+/* #define DEBUG */
 
 /* only C99 support inline function, so just use macros */
 /* remove and free a wrap node from the linked list
@@ -63,11 +63,13 @@ struct fdWrap {
 } * readHead, * writeHead;
 
 /* global variables */
-int http_sock, https_sock;
-int log_fd;
+static int http_sock, https_sock;
+static int log_fd;
 
+/* external reference by requestHandler.c */
 char _www_root[SMALL_BUF_SIZE];
 
+/* external reference from requestHandler.c */
 extern char _www_path[SMALL_BUF_SIZE];
 extern char _has_remain_bytes;
 extern off_t _remain_bytes;

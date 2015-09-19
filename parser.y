@@ -23,6 +23,8 @@
 #define YPRINTF(...)
 #endif
 
+/* external reference from requestHandler.c, set these variables to pass
+ * the string to requestHandler */
 extern char _token[SMALL_BUF_SIZE];
 extern char _text[SMALL_BUF_SIZE];
 
@@ -199,11 +201,11 @@ t_ws {
  */
  
 /* every line passed in will be less than buf size, and thus
- * no overflow issues */
+ * no overflow issues, format token: text */
 request: token t_colon t_sp text {
 	YPRINTF("Request: Matched rule 1.\n");
-	memcpy(_token, $1, strlen($1));
-	memcpy(_text, $4, strlen($4));
+	memcpy(_token, $1, strlen($1) + 1);
+	memcpy(_text, $4, strlen($4) + 1);
 	return SUCCESS;
 };
 

@@ -1,16 +1,18 @@
 ################################################################################
 # Makefile                                                                     #
 #                                                                              #
-# Description: This file contains the make rules for Recitation 1.             #
+# Description: This file contains the make rules for lisod server              #
 #                                                                              #
-# Authors: Athula Balachandran <abalacha@cs.cmu.edu>,                          #
-#          Wolf Richter <wolf@cs.cmu.edu>                                      #
+# Authors: Yunfan Ye <yunfany@andrew.cmu.edu>		                           #
 #                                                                              #
 ################################################################################
 
-default: lisod
+HTTP=5888
+HTTPS=4888
 
-lisod: common.o lisod.o requestHandler.o y.tab.o lex.yy.o 
+default: clean lisod
+
+lisod: common.o requestHandler.o lisod.o y.tab.o lex.yy.o 
 	@gcc $^ -o lisod -Wall -Werror
 
 echo_client:
@@ -22,10 +24,10 @@ lex.yy.c: lexer.l
 common.o: common.c
 	gcc -g -c $^ -o $@
 
-lisod.o: lisod.c
+requestHandler.o: requestHandler.c
 	gcc -g -c $^ -o $@
 
-requestHandler.o: requestHandler.c
+lisod.o: lisod.c
 	gcc -g -c $^ -o $@
 
 y.tab.o: y.tab.c
@@ -36,9 +38,20 @@ lex.yy.o: lex.yy.c
 
 y.tab.c: parser.y
 	yacc -d $^
+	
+run: clean lisod
+	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ../tmp/cgi/cgi_script.py ../tmp/grader.key ../tmp/grader.crt)
+
+test: ab_test siege_test
+
+ab_test:
+	(ab -n 100 -c 100 http://127.0.0.1:$(HTTP)/)
+	
+siege_test:
+	(siege -r 300 -c 300 -b http://127.0.0.1:$(HTTP)/)
 
 clean:
 	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c
 	
 handin:
-	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2)
+	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
