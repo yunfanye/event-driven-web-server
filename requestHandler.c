@@ -9,16 +9,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
-
-const char * _server_header = "Server: Liso/1.0 \r\n";
+/* const strings */
+const char * _content_len_token = "Content-Length";
+const char * _server_header = "Server: Liso/1.0\r\n";
 const char * _connect_header = "Connection: close\r\n";
 const char * error_msg_tpl = "<head><title>Error response</title></head><body><h1>Error response</h1><p>Error: %s</p></body>";
 
-struct type_map {
-	char surfix[TINY_BUF_SIZE];
-	char type[TINY_BUF_SIZE];
-} _type_map_entries[] = {
+/* surfix content-type mapping table */
+struct type_map _type_map_entries[] = {
     {".html", "text/html"},
     {".css" , "text/css"},
     {".png" , "image/png"},
@@ -26,31 +28,7 @@ struct type_map {
     {".gif" , "image/gif"}
 };
 
-char is_bad_request;
-char had_request_line;
-char _method[SMALL_BUF_SIZE];
-char _uri[SMALL_BUF_SIZE];
-char _prot[SMALL_BUF_SIZE];
-char _token[SMALL_BUF_SIZE];
-char _text[SMALL_BUF_SIZE];
-
-char _www_path[SMALL_BUF_SIZE];
-char _has_remain_bytes;
-off_t _remain_bytes;
-off_t _file_offset;
-
-extern char _www_root[SMALL_BUF_SIZE];
-
-enum parse_state {
-	STATE_START = 0,
-	STATE_CR,
-	STATE_CRLF,
-	STATE_CRLFCR,
-	STATE_CRLFCRLF
-};
-
-extern void set_parsing_buf(char *buf, size_t siz);
-
+/* Convert every character of a string to lower case */
 #define CONVERT_TO_LOWER(str, i)										\
 {																		\
 	i = 0;																\
@@ -60,6 +38,7 @@ extern void set_parsing_buf(char *buf, size_t siz);
 	}																	\
 }																		\
 
+/* Map the surfix of a file to Content-Type header */
 #define MAP_SURFIX_TO_TYPE(msurfix, mtype, i)							\
 {																		\
 	char * type; 														\
@@ -72,6 +51,13 @@ extern void set_parsing_buf(char *buf, size_t siz);
 	}																	\
 }
 
+/* HandleHTTP - handle http request 
+ * buf - request content
+ * buf_size - request size
+ * out_buf - response content
+ * socket - corresponding socket
+ * return value - response size
+ */
 int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int i;
 	int index = 0, last_index = 0;
@@ -79,12 +65,22 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	char * char_tmp;
 	enum parse_state state = STATE_START;
 	int response_size;
+	char is_set_browser; /* in case no browser info */
+	char browser_info[SMALL_BUF_SIZE];
+	/* we only care about ipv4, if ipv6 this should be sockaddr_storage */
+	struct sockaddr_in peer_addr;
+	socklen_t peer_len;
+	int peer_port;
+	char ip_addr[TINY_BUF_SIZE];
+	char addition_info[TINY_BUF_SIZE];
+	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
-	
-	printf("---------------parser begin-----------------\r\n");
-	
-	is_bad_request = 0;
+
+	has_content_len = 0;
+	is_set_browser = 0;
 	had_request_line = 0;
+	code = S_200_OK;
+	
 	while(index < buf_size && state != STATE_CRLFCRLF) {
 		char expected = 0;
 		switch(state) {
@@ -95,14 +91,33 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 				/* parse one line */
 				if(had_request_line) {
 					set_parsing_buf(buf + last_index, index - last_index - 2);	
-					yyparse();
+					/* yyparse return 0 on success */
+					if(yyparse()) {
+						code = S_400_BAD_REQUEST;
+					}
+					else {
+						/* A post request should have content length */
+						if(!strcmp(_method, "post") && !strcmp(_token, _content_len_token)) {
+							/* parse the text using atoi when post is supported */
+							has_content_len = 1;
+						}
+						if(!strcmp(_token, "User-Agent")) {						
+							is_set_browser = 1;
+							memcpy(browser_info, _text, strlen(_text) + 1);
+						}
+					}
 					last_index = index;
 				} else {
 					memcpy(work_buf, buf, index - 2);
 					work_buf[index - 2] = '\0';
-					printf("%s\r\n", work_buf);
+					/* we only allow _prot == 'HTTP/1.1', _method in 'get,
+					 * post, head', and _uri a valid file or dir */
 					if(sscanf(work_buf, "%s %s %s", _method, _uri, _prot) != 3)
-						is_bad_request = 1;
+						code = S_400_BAD_REQUEST;
+					else {
+						/* convert method to lower case */
+						CONVERT_TO_LOWER(_method, i);
+					}
 					had_request_line = 1;
 					last_index = index;
 				}
@@ -168,8 +183,8 @@ int get_response(char * out_buf) {
 	_has_remain_bytes = 0;
 	/* get file info */
 
-	if(is_bad_request)
-		code = S_400_BAD_REQUEST;
+	if(code != S_200_OK)
+		;
 	else if(strcmp(_prot, "HTTP/1.1"))
 		code = S_505_HTTP_VERSION_NOT_SUPPORTED;
 	else if(stat(_www_path, &statbuf) < 0) 

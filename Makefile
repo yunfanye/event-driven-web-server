@@ -52,6 +52,9 @@ siege_test:
 
 clean:
 	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c
+
+handin_%:
+	(make clean; git commit -a -m "handin"; git tag -d checkpoint-$*; git tag -a checkpoint-$* -m "handin"; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
 	
 handin:
 	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
