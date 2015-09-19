@@ -72,13 +72,14 @@ extern void set_parsing_buf(char *buf, size_t siz);
 	}																	\
 }
 
-int HandleHTTP(char * buf, int buf_size, char * out_buf) {
+int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int i;
 	int index = 0, last_index = 0;
 	char work_buf[SMALL_BUF_SIZE];
 	char * char_tmp;
 	enum parse_state state = STATE_START;
 	int response_size;
+	int buf_size = * ori_buf_size;
 	
 	printf("---------------parser begin-----------------\r\n");
 	
