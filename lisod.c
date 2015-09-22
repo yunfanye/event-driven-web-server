@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 {
 	int i, fileNameLen;
 	int http_port, https_port;	
-	char * log_file, * log_dir;
+	char * log_file, * log_dir, * lock_file;
     int client_sock;
     int responseSize;
     ssize_t readlen, readret, writeret;
@@ -61,13 +61,6 @@ int main(int argc, char* argv[])
 	http_sock = 0;
 	https_sock = 0;
 	log_fd = 0;
-	
-	/* ignore ctrl + c, if DEBUG, use ctrl+c to test interruption */
-#ifndef DEBUG
-    Signal(SIGINT, SIG_IGN);
-#else
-	Signal(SIGINT, sigint_handler);
-#endif
     
     /* read the command line, init config */
     if(argc < 9) {
@@ -88,12 +81,23 @@ int main(int argc, char* argv[])
     		error_exit("HTTP port number should not equal to that of HTTPS");
     	/* get log file */
     	log_file = argv[3];
+    	lock_file = argv[4];
     	/* get www root */
     	www_root_len = strlen(argv[5]);
     	if(www_root_len > SMALL_BUF_SIZE)
     		error_exit("The length of www root is not long!");
     	memcpy(_www_root, argv[5], www_root_len);
     }
+    
+    /* daemonizing */
+    
+    
+    /* ignore ctrl + c, if DEBUG, use ctrl+c to test interruption */
+#ifndef DEBUG
+    Signal(SIGINT, SIG_IGN);
+#else
+	Signal(SIGINT, sigint_handler);
+#endif
         
     /* if log file exists, append string; if not create it; if the 
      * directory doesn't exit, create it; That directly call mkdir()

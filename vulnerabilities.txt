@@ -1,0 +1,9 @@
+/***********************************************************http server**********************************************************************/
+1. It is possible that malloc will return NULL in cases that there is no enough memory. In this case, we should return a 501 Internal Server Error response. But current server just ignores this posibility.
+2. Since the server employs a write-on-full-buffer policy (as required), it is possible that a 200 OK message was sent while the remaining data (the amount that cannot be contained in a buffer) cannot be sent (file moved or no memory), in which cases the 200 OK message cannot be recalled and the client might get confused.
+
+
+/**********************************************************simle echo server*****************************************************************/
+1. Server should release the resource occupied by idle sockets after a certian period of time. A customer may just establish the connection without any read(s) or write(s), or the customer may unplug the wire after establishing a connection. In these cases, a sophicated server may need to close the connection after a certain period of time, releasing the resources. 
+2. Server might run out of memory (or resources). However, in this simple server, if the server runs out of memory, the only way is to close the socket. In future work, we may return a "501 internal server error" to the customer.
+3. The server only identify EINTR error, and for other errors, it just brutely closes the socket. More complex error handling methods may be needed. 

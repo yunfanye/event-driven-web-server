@@ -1,0 +1,10 @@
+/**********************************************************testing http server***************************************************************/
+For valid requests, we use curl, wireshark, apache bench(HTTP/1.0), and siege(HTTP/1.1) to test the correctness and measure the performance of the server. Specifically, we repeatedly run siege -c 600 -r 600 -b <server/resource> tens of times, and, with no performance degradation, we can ensure the server can support a large amount of concurrency.
+
+For bad requests, we generate malformed request using telnet, e.g. post without content length, bad formatted header, etc., and the server can return proper error message.
+
+
+/*******************************************************testing simple echo server***********************************************************/
+Establish a connection using netcat, i.e. "nc localhost 9999", send bytes and check return value.
+Simultaneously, run cp1_checker.py with various arguments, e.g. "./cp1_checker.py 127.0.0.1 9999 1000 10 2048 500", and
+send sigint to the server by pressing ctrl-c randomly, while the python program keep running.
