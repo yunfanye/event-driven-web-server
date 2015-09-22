@@ -34,6 +34,7 @@ int main(int argc, char* argv[])
 	int i, fileNameLen;
 	int http_port, https_port;	
 	char * log_file, * log_dir, * lock_file;
+	int lock_fd;
     int client_sock;
     int responseSize;
     ssize_t readlen, readret, writeret;
@@ -50,6 +51,8 @@ int main(int argc, char* argv[])
     int www_root_len;
     char reload_success;
     int write_remain_fd, read_remain_len;
+    int pid;
+    char pid_str[TINY_BUF_SIZE];
     
     fprintf(stdout, "----- Echo Server -----\n");	
     
@@ -90,7 +93,31 @@ int main(int argc, char* argv[])
     }
     
     /* daemonizing */
-    
+    pid = fork();
+    if (pid < 0) 
+    	exit(EXIT_FAILURE); /* fork error */
+    if (pid > 0) 
+    	exit(EXIT_SUCCESS); /* parent exits */
+	/* child (daemon) continues */
+    /* close all fds inherited */
+    for (i = getdtablesize(); i >= 0; --i)
+		close(i);
+	/* dup stdout & stderr to /dev/null */
+    i = open("/dev/null", O_RDWR); /* open stdin */
+    dup(i); /* stdout */
+    dup(i); /* stderr */
+    /* protects the files created */
+    umask(027);
+    /* server runs in /servers/ */
+    chdir("/servers/");
+    /* lock the lock file to prevent multiple instances */
+    lock_fd = open(lock_file, O_RDWR|O_CREAT, 0640);
+	if (lock_fd < 0)
+		exit(EXIT_FAILURE); /* cannot open */
+	if (lockf(lock_fd, F_TLOCK, 0) < 0)
+		exit(EXIT_SUCCESS); /* cannot lock */
+	sprintf(pid_str, "%d\n", getpid());
+	write(lock_fd, pid_str, strlen(pid_str)); /*record pid to lockfile */
     
     /* ignore ctrl + c, if DEBUG, use ctrl+c to test interruption */
 #ifndef DEBUG
