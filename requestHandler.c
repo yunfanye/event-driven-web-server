@@ -131,6 +131,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							msg_log(_token, _text);
 							if(!strcmp(_text, "close"))
 								_close_conn = 1;
+							_close_conn = 1;
 						}
 					}
 					last_index = index;
