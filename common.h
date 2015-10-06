@@ -4,6 +4,7 @@
 #define MAX_HEADER_LEN 32768
 #define TINY_BUF_SIZE 128
 #define SMALL_BUF_SIZE 8192
+#define ENVP_SIZE	128
 /* if bytes sent exceed BUF_SIZE, then it will proceed it by several reads */
 #define BUF_SIZE 40960
 #define MAX(x, y)  ((x) > (y) ? (x) : (y))

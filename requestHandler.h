@@ -26,6 +26,8 @@ enum parse_state {
 extern char _www_root[SMALL_BUF_SIZE];
 /* external refernce from yacc parser */
 extern void set_parsing_buf(char *buf, size_t siz);
+/* external from lisod.h */
+extern int _http_port;
 
 /* global variables that are referenced in yacc */
 char _token[SMALL_BUF_SIZE];
@@ -38,6 +40,7 @@ off_t _remain_bytes;
 off_t _file_offset;
 int _is_CGI;
 int _close_conn;
+char * _envp[ENVP_SIZE];
 
 /* global variables */
 static char had_request_line;
@@ -45,7 +48,8 @@ static char _method[SMALL_BUF_SIZE];
 static char _uri[SMALL_BUF_SIZE];
 static char _prot[SMALL_BUF_SIZE];
 static enum status code;
-static char status_message[TINY_BUF_SIZE];	
+static char status_message[TINY_BUF_SIZE];
+static char * malloc_string(const char * format, ...);	
 
 
 #endif

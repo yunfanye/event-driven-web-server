@@ -7,8 +7,8 @@
 #                                                                              #
 ################################################################################
 
-HTTP=5894
-HTTPS=4894
+HTTP=5999
+HTTPS=4999
 
 default: clean lisod
 
@@ -48,6 +48,9 @@ run: clean lisod
 run2: clean lisod
 	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ./flaskr/flaskr.py ../tmp/grader.key ../tmp/grader.crt)
 
+run3: clean lisod
+	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ./flaskr/wsgi_wrapper.py ../tmp/grader.key ../tmp/grader.crt)
+
 test: ab_test siege_test
 
 ab_test:
@@ -57,10 +60,10 @@ siege_test:
 	(siege -r 300 -c 300 -b http://127.0.0.1:$(HTTP)/)
 
 clean:
-	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c
+	rm -f *~ lisod *.o *.tar *.zip *.gzip *.bzip *.gz y.tab.c y.tab.h lex.yy.c flaskr/*~
 
 handin_%:
 	(make clean; git commit -a -m "handin"; git tag -d checkpoint-$*; git tag -a checkpoint-$* -m "handin"; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
 	
 handin:
-	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
+	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)

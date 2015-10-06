@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include "common.h"
@@ -77,6 +79,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int content_len;
 	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
+	int envp_count = 0;
 	
 	_is_CGI = 0;
 	has_content_len = 0;
@@ -122,6 +125,10 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							if(content_len >= 0)
 								has_content_len = 1;
 						}
+						if(_is_CGI) {
+							_envp[envp_count++] = malloc_string("%s=%s", 
+								_token, _text);
+						}
 						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
 							memcpy(browser_info, _text, strlen(_text) + 1);
@@ -131,7 +138,6 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							msg_log(_token, _text);
 							if(!strcmp(_text, "close"))
 								_close_conn = 1;
-							_close_conn = 1;
 						}
 					}
 					last_index = index;
@@ -143,7 +149,22 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 					if(sscanf(work_buf, "%s %s %s", _method, _uri, _prot) != 3)
 						code = S_400_BAD_REQUEST;
 					else {
-						/* convert method to lower case */
+						/* convert method to lower case */						
+						if(strstr(_uri, "/cgi/") == _uri) {
+							_is_CGI = 1;
+							_envp[0] = malloc_string("REQUEST_URI=%s", 
+								_uri + 4); /* skip the '/cgi' */
+							_envp[1] = malloc_string("REQUEST_METHOD=%s", 
+								_method);
+							_envp[2] = malloc_string("PATH_INFO=%s", _uri);
+							_envp[3] = malloc_string("SERVER_SOFTWARE=%s", 
+								"Liso/1.0");
+							_envp[4] = malloc_string("SERVER_NAME=%s", 
+								"lisod");
+							_envp[5] = malloc_string("SERVER_PORT=%d", 
+								_http_port);
+							envp_count = 6;
+						}
 						CONVERT_TO_LOWER(_method, i);
 					}
 					had_request_line = 1;
@@ -169,6 +190,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 
 	if(state == STATE_CRLFCRLF) {
 		/* FOUND CRLF-CRLF */
+		_envp[envp_count++] = NULL; /* nul terminated */
 		/* convert to lower case */
 		CONVERT_TO_LOWER(_method, i);
 		/* Any URI starting with '/cgi/' will be handled by a single
@@ -176,8 +198,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 		if(!strcmp(_method, "post") && !has_content_len)
 			code = S_411_LENGTH_REQUIRED;
 		/* if it is a bad request, then return error msg */
-		if(code == S_200_OK && strstr(_uri, "/cgi/") == _uri) {
-			_is_CGI = 1;
+		if(code == S_200_OK && _is_CGI) {
 			/* return the total length of packet */
 			return content_len + index;
 		}
@@ -372,5 +393,22 @@ int get_message(enum status code, char * msg) {
 	msg_len = strlen(msg_tmp);
 	memcpy(msg, msg_tmp, msg_len + 1);
 	return 1;
+}
+
+char * malloc_string(const char * format, ...) {
+	int len;
+	char malloc_buf[SMALL_BUF_SIZE];
+	char * malloc_str;
+	va_list args;
+	va_start(args, format);	
+	vsnprintf(malloc_buf, SMALL_BUF_SIZE, format, args);
+	va_end(args);
+	len = strlen(malloc_buf);
+	malloc_str = malloc(len + 1);
+	if(malloc_str != NULL) {
+		strncpy(malloc_str, malloc_buf, len);
+		malloc_str[len] = '\0';
+	}
+	return malloc_str;
 }
 

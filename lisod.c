@@ -33,7 +33,7 @@
 int main(int argc, char* argv[])
 {
 	int i, fileNameLen;
-	int http_port, https_port;	
+	int https_port;	
 	char * log_file, * log_dir, * lock_file, * cgi_path, * ssl_key, * ssl_crt;
 	int lock_fd;
     int client_sock;
@@ -65,7 +65,7 @@ int main(int argc, char* argv[])
 	http_sock = 0;
 	https_sock = 0;
 	log_fd = 0;
-    
+    _envp[0] = NULL;
     /* read the command line, init config */
     if(argc < 9) {
     	/* not enought command line arguments */
@@ -74,14 +74,14 @@ int main(int argc, char* argv[])
     else {
     	/* since only http port is used currently, other parameters 
     	 * are simply ignored */
-    	http_port = atoi(argv[1]);
+    	_http_port = atoi(argv[1]);
     	https_port = atoi(argv[2]);
     	/* check the input, beyond the range, the port is invalid */
-    	if(http_port > 65535 || http_port < 0)
+    	if(_http_port > 65535 || _http_port < 0)
     		error_exit("HTTP port number invalid!");
     	if(https_port > 65535 || https_port < 0) 
     		error_exit("HTTPS port number invalid!");
-    	if(https_port == http_port)
+    	if(https_port == _http_port)
     		error_exit("HTTP port number should not equal to that of HTTPS");
     	/* get log file */
     	log_file = argv[3];
@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
 #endif
 
 	/* initialize http */
-	mHTTP_init(http_port);
+	mHTTP_init(_http_port);
 	mSSL_init(https_port, ssl_key, ssl_crt);
 	
 
@@ -234,7 +234,7 @@ int main(int argc, char* argv[])
     						buf, readret);
     					loopFdWrap -> bufSize += readret;    					
        					responseSize = HandleHTTP(loopFdWrap -> buf,
-       							&loopFdWrap -> bufSize, buf, loopFdWrap -> fd);
+       							&loopFdWrap -> bufSize, buf, loopFdWrap -> fd);      					
     					if(responseSize > 0) {
     						/* request processed; then respond, 
 							 * i.e. keep it in write buf and
@@ -261,7 +261,7 @@ int main(int argc, char* argv[])
 								loopFdWrap -> bufSize = 0;
     						}
     						else {
-    							CreatePipe(cgi_path, &pipeInFd, &pipeOutFd);
+    							CreatePipe(cgi_path, &pipeInFd, &pipeOutFd, _envp);
     							writeHead -> pipeFd = pipeOutFd;
     							writeHead -> isCGI = 1;
     							if(responseSize > loopFdWrap -> bufSize) {
@@ -286,7 +286,8 @@ int main(int argc, char* argv[])
     								close_file(pipeInFd);
     							}
     						}
-    					}    					
+    					}
+    					free_strings(_envp);    					
     					/* proceed next node */
     					loopFdWrap = loopFdWrap -> next;    					
 										
@@ -706,4 +707,13 @@ ssize_t mSend(int sockfd, SSL * ssl_fd, const void * buf, size_t writelen,
 		
 	}
 	return writeret;
+}
+
+void free_strings(char ** envp) {
+	int i = 0;
+	while(envp[i] != NULL) {
+		free(envp[i]);
+		envp[i] = NULL;
+		i++;
+	}	
 }

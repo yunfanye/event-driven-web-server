@@ -67,6 +67,7 @@ int daemonize(char* lock_file);
 void liso_shutdown();
 void mHTTP_init(int port);
 void mSSL_init(int port, char * key, char * crt);
+void free_strings(char ** envp);
 
 /* Wrapper functions */
 int Accept(int s, struct sockaddr *addr, socklen_t *addrlen);
@@ -91,6 +92,9 @@ SSL_CTX *ssl_context;
 /* external reference by requestHandler.c */
 char _www_root[SMALL_BUF_SIZE];
 
+/* external referenced by CGIHandler.c */
+int _http_port;
+
 /* external reference from requestHandler.c */
 extern char _www_path[SMALL_BUF_SIZE];
 extern char _has_remain_bytes;
@@ -98,6 +102,7 @@ extern off_t _remain_bytes;
 extern off_t _file_offset;
 extern int _is_CGI;
 extern int _close_conn;
+extern char * _envp[ENVP_SIZE];
 
 /* external reference from common.h, log file descriptor */
 extern int log_fd;
