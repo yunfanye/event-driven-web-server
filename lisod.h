@@ -2,7 +2,7 @@
 #define _LISOD
 
 /* uncomment the following line to debug */
-/* #define DEBUG */
+#define DEBUG
 
 /* only C99 support inline function, so just use macros */
 /* remove and free a wrap node from the linked list

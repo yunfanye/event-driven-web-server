@@ -16,7 +16,7 @@
 /* const strings */
 const char * _content_len_token = "Content-Length";
 const char * _server_header = "Server: Liso/1.0\r\n";
-const char * _connect_header = "Connection: close\r\n";
+const char * _connect_header = "Connection: keep-alive\r\n";
 const char * error_msg_tpl = "<head><title>Error response</title></head>"
 	"<body><h1>Error response</h1><p>Error: %s</p></body>";
 
@@ -117,9 +117,10 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 						if(!strcmp(_method, "post") && 
 							!strcmp(_token, _content_len_token)) {
 							/* should parse the text using atoi
-							 * when the length is needed to parse */
-							has_content_len = 1;
+							 * when the length is needed to parse */						
 							content_len = atoi(_text);
+							if(content_len >= 0)
+								has_content_len = 1;
 						}
 						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
