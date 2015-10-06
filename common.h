@@ -21,15 +21,14 @@ enum status {
     S_505_HTTP_VERSION_NOT_SUPPORTED = 505
 };
 
-/* saved std_in and std_out fds */
-int _saved_stderr;
-int _saved_stdout;
-
 /* function prototypes */
 void msg_log(char * token, char * msg);
 void error_log(char * msg);
 int open_file(const char *pathname, int flags);
 int close_file(int fd);
 int close_log_file(int fd);
+
+/* external reference by lisod.c, log file descriptor */
+int log_fd;
 
 #endif

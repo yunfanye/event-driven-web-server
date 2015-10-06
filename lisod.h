@@ -35,15 +35,6 @@
 /* signal */
 typedef void (*sighandler_t)(int);
 
-/* Function prototypes */           				
-sighandler_t Signal(int signum, sighandler_t handler); 
-int close_socket(int sock);
-void error_exit(char * msg);
-
-#ifdef DEBUG
-void sigint_handler(int sig);
-#endif
-
 enum protocol {
 	HTTP,
 	HTTPS
@@ -51,20 +42,49 @@ enum protocol {
 
 struct fdWrap {
 	int fd;
+	SSL * ssl_fd;
 	int bufSize;
 	char buf[BUF_SIZE];
 	enum protocol prot;
 	struct fdWrap * next;
-	/* the following only used in write */
+	/* has_remain - has remain bytes in a file to write OR
+	 * has remain bytes to read from a socket */
 	char has_remain;	
 	off_t remain_bytes;
 	off_t offset;
 	char path[SMALL_BUF_SIZE];
+	int isCGI;
+	int pipeFd;
 } * readHead, * writeHead;
+
+/* Function prototypes */           				
+sighandler_t Signal(int signum, sighandler_t handler); 
+int close_socket(int sock);
+void error_exit(char * msg);
+int daemonize(char* lock_file);
+void liso_shutdown();
+void mHTTP_init(int port);
+void mSSL_init(int port, char * key, char * crt);
+
+/* Wrapper functions */
+int Accept(int s, struct sockaddr *addr, socklen_t *addrlen);
+SSL *SSL_New(SSL_CTX *ctx);
+int SSL_Set_fd(SSL *ssl, int fd);
+int SSL_Accept(SSL *ssl);
+ssize_t mRecv(int sockfd, SSL * ssl_fd, void *buf, size_t len,
+	enum protocol prot);
+ssize_t mSend(int sockfd, SSL * ssl_fd, const void *buf, size_t len,
+	enum protocol prot);
+int mClose_socket(struct fdWrap * wrap);
+
+#ifdef DEBUG
+void sigint_handler(int sig);
+#endif
 
 /* global variables */
 static int http_sock, https_sock;
-static int log_fd;
+SSL_CTX *ssl_context;
+
 
 /* external reference by requestHandler.c */
 char _www_root[SMALL_BUF_SIZE];
@@ -74,5 +94,9 @@ extern char _www_path[SMALL_BUF_SIZE];
 extern char _has_remain_bytes;
 extern off_t _remain_bytes;
 extern off_t _file_offset;
+extern int _is_CGI;
+
+/* external reference from common.h, log file descriptor */
+extern int log_fd;
 
 #endif

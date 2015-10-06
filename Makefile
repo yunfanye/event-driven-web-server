@@ -7,13 +7,13 @@
 #                                                                              #
 ################################################################################
 
-HTTP=5888
-HTTPS=4888
+HTTP=5890
+HTTPS=4890
 
 default: clean lisod
 
-lisod: common.o requestHandler.o lisod.o y.tab.o lex.yy.o 
-	@gcc $^ -o lisod -Wall -Werror
+lisod: common.o requestHandler.o CGIHandler.o lisod.o y.tab.o lex.yy.o 
+	@gcc $^ -o lisod -Wall -Werror -L/usr/local/ssl/lib -lssl -lcrypto
 
 echo_client:
 	@gcc echo_client.c -o echo_client -Wall -Werror
@@ -25,6 +25,9 @@ common.o: common.c
 	gcc -g -c $^ -o $@
 
 requestHandler.o: requestHandler.c
+	gcc -g -c $^ -o $@
+	
+CGIHandler.o: CGIHandler.c
 	gcc -g -c $^ -o $@
 
 lisod.o: lisod.c
@@ -41,6 +44,9 @@ y.tab.c: parser.y
 	
 run: clean lisod
 	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ../tmp/cgi/cgi_script.py ../tmp/grader.key ../tmp/grader.crt)
+
+run2: clean lisod
+	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ./flaskr/flaskr.py ../tmp/grader.key ../tmp/grader.crt)
 
 test: ab_test siege_test
 

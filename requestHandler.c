@@ -57,7 +57,7 @@ struct type_map _type_map_entries[] = {
  * buf_size - request size
  * out_buf - response content
  * socket - corresponding socket
- * return value - response size
+ * return value - response size, if is nonCGI; total request size, if is CGI.
  */
 int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int i;
@@ -74,13 +74,16 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int peer_port;
 	char ip_addr[TINY_BUF_SIZE];
 	char addition_info[TINY_BUF_SIZE];
+	int content_len;
 	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
-
+	
+	_is_CGI = 0;
 	has_content_len = 0;
 	is_set_browser = 0;
 	had_request_line = 0;
 	code = S_200_OK;
+	content_len = 0;
 	
 	while(index < buf_size && state != STATE_CRLFCRLF) {
 		char expected = 0;
@@ -96,7 +99,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 					memmove(buf, buf + index, buf_size - index);
 					/* modify the buf size */
 					*ori_buf_size -= index;
-					error_log("Header exceeds maximum size, reject it.\n");
+					error_log("Header exceeds maximum size, reject it.");
 					return 0;
 				}
 				expected = '\r';
@@ -116,6 +119,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							/* should parse the text using atoi
 							 * when the length is needed to parse */
 							has_content_len = 1;
+							content_len = atoi(_text);
 						}
 						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
@@ -159,11 +163,20 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 		/* FOUND CRLF-CRLF */
 		/* convert to lower case */
 		CONVERT_TO_LOWER(_method, i);
-		response_size = get_response(out_buf);
+		/* Any URI starting with '/cgi/' will be handled by a single
+		 * command-line specified executable via a CGI interface */
+		if(strstr(_uri, "/cgi/") == _uri) {
+			_is_CGI = 1;
+			/* return the total length of packet */
+			return content_len + index;
+		}
+		else
+			response_size = get_response(out_buf);
 	} else {
 		/* Could not find CRLF-CRLF*/
 		response_size = 0;
-		printf("Failed: Could not find CRLF-CRLF\n");
+		error_log("Failed: Could not find CRLF-CRLF");
+		error_log(buf);
 	}
 	return response_size;
 }
@@ -214,7 +227,7 @@ int get_response(char * out_buf) {
 		if(!(statbuf.st_mode & S_IROTH))
 			code = S_403_FORBIDDEN;
 	}
-	/* try to read file */
+	/* if it is a normal file, read the content of file */
 	if(code == S_200_OK) {
 		/* get total file size */
 		total_size = statbuf.st_size;
@@ -349,7 +362,3 @@ int get_message(enum status code, char * msg) {
 	return 1;
 }
 
-int HandleHTTPS(char * buf, int bufSize, char * out_buf) {
-	memcpy(out_buf, buf, bufSize);
-	return bufSize;
-}

@@ -5,7 +5,6 @@
 
 /* function prototypes */
 int HandleHTTP(char * buf, int * buf_size, char * out_buf, int socket);
-int HandleHTTPS(char * buf, int buf_size, char * out_buf);
 int get_response(char * out_buf);
 int get_message(enum status code, char * msg);
 off_t get_body(int fd, char * out_buf, off_t size);
@@ -37,6 +36,7 @@ char _www_path[SMALL_BUF_SIZE];
 char _has_remain_bytes;
 off_t _remain_bytes;
 off_t _file_offset;
+int _is_CGI;
 
 /* global variables */
 static char had_request_line;
@@ -45,5 +45,6 @@ static char _uri[SMALL_BUF_SIZE];
 static char _prot[SMALL_BUF_SIZE];
 static enum status code;
 static char status_message[TINY_BUF_SIZE];	
+
 
 #endif

@@ -4,13 +4,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
 
 void msg_log(char * token, char * msg) {
-	fprintf(stdout, "%s: %s\n", token, msg);
+	char buf[SMALL_BUF_SIZE];
+	/* when log file has been not open, print to stdout */
+	if(log_fd) {
+		sprintf(buf, "%s: %s\n", token, msg);
+		write(log_fd, buf, strlen(buf));
+	}
+	else
+		printf("%s: %s\n", token, msg);
 }
 
 void error_log(char * msg) {
-	fprintf(stderr, "ERROR: %s\r\n", msg);
+	msg_log("ERROR", msg);
 }
 
 int close_file(int fd) {
@@ -29,8 +37,5 @@ int open_file(const char *pathname, int flags) {
 }
 
 int close_log_file(int fd) {
-	/* close log file and redirect output to stdout & stderr */
-	dup2(_saved_stderr, STDERR_FILENO);
-	dup2(_saved_stdout, STDOUT_FILENO);
 	return close_file(fd);
 }
