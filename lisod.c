@@ -243,6 +243,7 @@ int main(int argc, char* argv[])
 		   						loopFdWrap -> fd);
 		   					writeHead -> ssl_fd = loopFdWrap -> ssl_fd;
 		   					writeHead -> prot = loopFdWrap -> prot;
+		   					writeHead -> toClose = _close_conn;
 							/* a new write */
 		   					FD_SET(writeHead -> fd, &writeValid);
     						if(!_is_CGI) {
@@ -410,7 +411,8 @@ int main(int argc, char* argv[])
            				else {
            					/* send a fin to notify the client, 
            					 * only needed for HTTP/1.0 */
-           					//shutdown(loopFdWrap -> fd, SHUT_WR);
+           					if(loopFdWrap -> toClose)
+           						shutdown(loopFdWrap -> fd, SHUT_WR);
 							FD_CLR(loopFdWrap -> fd, &writeValid);
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
 								writeHead);	

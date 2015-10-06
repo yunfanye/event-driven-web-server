@@ -37,6 +37,7 @@ char _has_remain_bytes;
 off_t _remain_bytes;
 off_t _file_offset;
 int _is_CGI;
+int _close_conn;
 
 /* global variables */
 static char had_request_line;

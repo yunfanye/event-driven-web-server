@@ -97,6 +97,7 @@ extern char _has_remain_bytes;
 extern off_t _remain_bytes;
 extern off_t _file_offset;
 extern int _is_CGI;
+extern int _close_conn;
 
 /* external reference from common.h, log file descriptor */
 extern int log_fd;

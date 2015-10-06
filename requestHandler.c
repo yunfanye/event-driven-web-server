@@ -77,7 +77,6 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int content_len;
 	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
-	int closeConn;
 	
 	_is_CGI = 0;
 	has_content_len = 0;
@@ -85,7 +84,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	had_request_line = 0;
 	code = S_200_OK;
 	content_len = 0;
-	closeConn = 0;
+	_close_conn = 0;
 	while(index < buf_size && state != STATE_CRLFCRLF) {
 		char expected = 0;
 		switch(state) {
@@ -131,7 +130,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							CONVERT_TO_LOWER(_text, i);
 							msg_log(_token, _text);
 							if(!strcmp(_text, "close"))
-								closeConn = 1;
+								_close_conn = 1;
 						}
 					}
 					last_index = index;
@@ -178,8 +177,11 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 			/* return the total length of packet */
 			return content_len + index;
 		}
-		else
-			response_size = get_response(out_buf, closeConn);
+		else {
+			if(!strcmp(_method, "post") && !has_content_len)
+				code = S_411_LENGTH_REQUIRED;
+			response_size = get_response(out_buf, _close_conn);
+		}
 	} else {
 		/* Could not find CRLF-CRLF*/
 		response_size = 0;
@@ -195,7 +197,6 @@ int get_response(char * out_buf, int closeConn) {
 	int fd;
 	int response_len, append_len;
 	off_t total_size;
-	enum status code = S_200_OK;
 	char status_message[TINY_BUF_SIZE];	
 	time_t timer;
     char current_time[TINY_BUF_SIZE], last_modified_time[TINY_BUF_SIZE];
