@@ -55,6 +55,8 @@ struct fdWrap {
 	char path[SMALL_BUF_SIZE];
 	int isCGI;
 	int pipeFd;
+	/* if Connection: Close header is sent, toClose = 1 */
+	int toClose;
 } * readHead, * writeHead;
 
 /* Function prototypes */           				

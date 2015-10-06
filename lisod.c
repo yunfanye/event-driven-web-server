@@ -359,9 +359,8 @@ int main(int argc, char* argv[])
     	    					strerror(errno));
 #endif
            					if(errno != EINTR) {
-           						/* send a fin to notify the client, 
-           						 * only needed for HTTP/1.0 */
-           						// shutdown(loopFdWrap -> fd, SHUT_WR);
+           						/* send a fin to notify the client, if error */
+           						shutdown(loopFdWrap -> fd, SHUT_WR);
            						FD_CLR(loopFdWrap -> fd, &readValid);
            						FD_CLR(loopFdWrap -> fd, &writeValid);
             					/* remove and free a write wrap from the linked
@@ -409,8 +408,9 @@ int main(int argc, char* argv[])
            				if(reload_success)
            					loopFdWrap = loopFdWrap -> next; 
            				else {
-           					/* send a fin to notify the client */
-           					shutdown(loopFdWrap -> fd, SHUT_WR);
+           					/* send a fin to notify the client, 
+           					 * only needed for HTTP/1.0 */
+           					//shutdown(loopFdWrap -> fd, SHUT_WR);
 							FD_CLR(loopFdWrap -> fd, &writeValid);
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
 								writeHead);	

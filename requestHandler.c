@@ -129,6 +129,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 						}
 						else if(!strcmp(_token, "Connection")) {
 							CONVERT_TO_LOWER(_text, i);
+							msg_log(_token, _text);
 							if(!strcmp(_text, "close"))
 								closeConn = 1;
 						}
@@ -294,7 +295,8 @@ int get_response(char * out_buf, int closeConn) {
 		if(!strcmp(_method, "head")) {
 			sprintf(out_buf, "HTTP/1.1 %s\r\n" "Date: %s\r\n"
 				"%s" "Content-Type: text/html\r\n" "%s\r\n",
-				status_message, current_time, _server_header, _connect_header);
+				status_message, current_time, _server_header, 
+				(closeConn ? _connect_header : ""));
 		}
 		else {
 			sprintf(error_msg, error_msg_tpl, status_message);
@@ -303,7 +305,7 @@ int get_response(char * out_buf, int closeConn) {
 				"%s: %d\r\n" "%s"
 				"Content-Type: text/html\r\n" "%s\r\n%s", 
 				status_message, current_time, _content_len_token, response_len,
-				_server_header, _connect_header, error_msg);
+				_server_header, (closeConn ? _connect_header : ""), error_msg);
 		}
 		response_len = strlen(out_buf) + 1;
 		return response_len;
