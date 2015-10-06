@@ -16,7 +16,7 @@
 /* const strings */
 const char * _content_len_token = "Content-Length";
 const char * _server_header = "Server: Liso/1.0\r\n";
-const char * _connect_header = "Connection: keep-alive\r\n";
+const char * _connect_header = "Connection: Close\r\n";
 const char * error_msg_tpl = "<head><title>Error response</title></head>"
 	"<body><h1>Error response</h1><p>Error: %s</p></body>";
 
@@ -77,6 +77,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	int content_len;
 	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
+	int closeConn;
 	
 	_is_CGI = 0;
 	has_content_len = 0;
@@ -84,7 +85,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	had_request_line = 0;
 	code = S_200_OK;
 	content_len = 0;
-	
+	closeConn = 0;
 	while(index < buf_size && state != STATE_CRLFCRLF) {
 		char expected = 0;
 		switch(state) {
@@ -125,6 +126,11 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
 							memcpy(browser_info, _text, strlen(_text) + 1);
+						}
+						else if(!strcmp(_token, "Connection")) {
+							CONVERT_TO_LOWER(_text, i);
+							if(!strcmp(_text, "close"))
+								closeConn = 1;
 						}
 					}
 					last_index = index;
@@ -172,7 +178,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 			return content_len + index;
 		}
 		else
-			response_size = get_response(out_buf);
+			response_size = get_response(out_buf, closeConn);
 	} else {
 		/* Could not find CRLF-CRLF*/
 		response_size = 0;
@@ -182,7 +188,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	return response_size;
 }
 
-int get_response(char * out_buf) {
+int get_response(char * out_buf, int closeConn) {
 	/* find uri status */
 	int i;
 	int fd;
@@ -264,9 +270,9 @@ int get_response(char * out_buf) {
 	if(code == S_200_OK) {
 		sprintf(out_buf, "HTTP/1.1 %s\r\n" "%s" "Date: %s\r\n" "%s"
 			"Content-Type: %s\r\n" "%s: %lu\r\n" 
-			"Last-Modified: %s \r\n\r\n", status_message, _server_header, 
-			current_time, _connect_header, content_type, _content_len_token, 
-			total_size, last_modified_time);
+			"Last-Modified: %s \r\n\r\n", status_message, _server_header,
+			current_time, (closeConn ? _connect_header : ""), content_type,
+			_content_len_token, total_size, last_modified_time);
 		/* append body to the header */
 		response_len = strlen(out_buf);
 		append_len = MIN(body_size, BUF_SIZE - response_len);		
