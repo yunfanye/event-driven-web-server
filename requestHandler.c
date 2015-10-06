@@ -172,14 +172,15 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 		CONVERT_TO_LOWER(_method, i);
 		/* Any URI starting with '/cgi/' will be handled by a single
 		 * command-line specified executable via a CGI interface */
-		if(strstr(_uri, "/cgi/") == _uri) {
+		if(!strcmp(_method, "post") && !has_content_len)
+			code = S_411_LENGTH_REQUIRED;
+		/* if it is a bad request, then return error msg */
+		if(code == S_200_OK && strstr(_uri, "/cgi/") == _uri) {
 			_is_CGI = 1;
 			/* return the total length of packet */
 			return content_len + index;
 		}
 		else {
-			if(!strcmp(_method, "post") && !has_content_len)
-				code = S_411_LENGTH_REQUIRED;
 			response_size = get_response(out_buf, _close_conn);
 		}
 	} else {
