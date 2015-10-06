@@ -14,7 +14,7 @@
 #include <unistd.h>
 #include "CGIHandler.h"
 
-int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd) {
+int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd, char * envp[]) {
     /*************** BEGIN VARIABLE DECLARATIONS **************/
     pid_t pid;
     int stdin_pipe[2];
@@ -22,30 +22,6 @@ int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd) {
 	char* argv[2];
 	argv[0] = cgi_path;
 	argv[1] = NULL;
-	char* envp[] = {
-                    "QUERY_STRING=action=opensearch&search=HT&namespace=0&suggest=",
-                    "REMOTE_ADDR=128.2.215.22",
-                    "REMOTE_HOST=gs9671.sp.cs.cmu.edu",
-                    "REQUEST_METHOD=GET",
-                    "SCRIPT_NAME=/w/api.php",
-                    "HOST_NAME=en.wikipedia.org",
-                    "REQUEST_URI=/",
-                    "PATH_INFO=/",
-                    "SERVER_PORT=5890",
-                    "SERVER_NAME=lisod",
-                    "SERVER_PROTOCOL=HTTP/1.1",
-                    "SERVER_SOFTWARE=Liso/1.0",
-                    "HTTP_ACCEPT=application/json, text/javascript, */*; q=0.01",
-                    "HTTP_REFERER=http://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=test+wikipedia+search",
-                    "HTTP_ACCEPT_ENCODING=gzip,deflate,sdch",
-                    "HTTP_ACCEPT_LANGUAGE=en-US,en;q=0.8",
-                    "HTTP_ACCEPT_CHARSET=ISO-8859-1,utf-8;q=0.7,*;q=0.3",
-                    "HTTP_USER_AGENT=Mozilla/5.0 (X11; Linux i686) AppleWebKit/535.1 (KHTML, like Gecko) Chrome/14.0.835.186 Safari/535.1",
-                    "HTTP_CONNECTION=keep-alive",
-                    "HTTP_HOST=en.wikipedia.org",
-                    NULL
-               };
-    
     /*************** END VARIABLE DECLARATIONS **************/
 
     /*************** BEGIN PIPE **************/
@@ -81,7 +57,6 @@ int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd) {
         dup2(stdout_pipe[1], fileno(stdout));
         dup2(stdin_pipe[0], fileno(stdin));
         /* you should probably do something with stderr */
-
         /* pretty much no matter what, if it returns bad things happened... */
         if (execve(cgi_path, argv, envp))
         {
