@@ -1,7 +1,9 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include "common.h"
 #include "requestHandler.h"
@@ -14,7 +16,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-
+#define _GNU_SOURCE
 /* const strings */
 const char * _content_len_token = "Content-Length";
 const char * _server_header = "Server: Liso/1.0\r\n";
@@ -35,8 +37,22 @@ struct type_map _type_map_entries[] = {
 #define CONVERT_TO_LOWER(str, i)										\
 {																		\
 	i = 0;																\
-	while(str[i]) { 													\
-		str[i] = tolower(str[i]);										\
+	while(str[i]) {														\
+		if(str[i] >= 'A' && str[i] <= 'Z') 								\
+			str[i] = tolower(str[i]);									\
+		i++;															\
+	}																	\
+}																		\
+
+/* Convert every character of a string to upper case */
+#define CONVERT_TO_ENVP(str, i)											\
+{																		\
+	i = 0;																\
+	while(str[i]) {														\
+		if(str[i] >= 'a' && str[i] <= 'z') 								\
+			str[i] = toupper(str[i]);									\
+		else if(str[i] == '-')											\
+			str[i] = '_';												\
 		i++;															\
 	}																	\
 }																		\
@@ -61,7 +77,8 @@ struct type_map _type_map_entries[] = {
  * socket - corresponding socket
  * return value - response size, if is nonCGI; total request size, if is CGI.
  */
-int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
+int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, 
+	int socket, int isHTTP) {
 	int i;
 	int index = 0, last_index = 0;
 	char work_buf[SMALL_BUF_SIZE];
@@ -80,6 +97,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	char has_content_len; /* POST request should contain Content-Length */
 	int buf_size = * ori_buf_size;
 	int envp_count = 0;
+	char * query_str;
 	
 	_is_CGI = 0;
 	has_content_len = 0;
@@ -88,6 +106,7 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 	code = S_200_OK;
 	content_len = 0;
 	_close_conn = 0;
+	response_size = 0;
 	while(index < buf_size && state != STATE_CRLFCRLF) {
 		char expected = 0;
 		switch(state) {
@@ -120,14 +139,14 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 						if(!strcmp(_method, "post") && 
 							!strcmp(_token, _content_len_token)) {
 							/* should parse the text using atoi
-							 * when the length is needed to parse */						
+							 * when the length is needed to parse */
 							content_len = atoi(_text);
 							if(content_len >= 0)
 								has_content_len = 1;
-						}
-						if(_is_CGI) {
-							_envp[envp_count++] = malloc_string("%s=%s", 
-								_token, _text);
+							else {
+								content_len = 0;
+								_close_conn = 1;
+							}
 						}
 						if(!strcmp(_token, "User-Agent")) {	
 							is_set_browser = 1;
@@ -139,6 +158,16 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 							if(!strcmp(_text, "close"))
 								_close_conn = 1;
 						}
+						if(_is_CGI && envp_count < ENVP_SIZE) {
+							CONVERT_TO_ENVP(_token, i);
+							if(!strcmp(_token, "CONTENT_LENGTH") || 
+								!strcmp(_token, "CONTENT_TYPE"))
+								_envp[envp_count++] = malloc_string("%s=%s",
+									_token, _text);							
+							else
+								_envp[envp_count++] = malloc_string("HTTP_%s=%s", 
+									_token, _text);						
+						}
 					}
 					last_index = index;
 				} else {
@@ -149,22 +178,36 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 					if(sscanf(work_buf, "%s %s %s", _method, _uri, _prot) != 3)
 						code = S_400_BAD_REQUEST;
 					else {
-						/* convert method to lower case */						
-						if(strstr(_uri, "/cgi/") == _uri) {
+						if(!check_method(_method))
+							code = S_400_BAD_REQUEST;						
+						else if(strstr(_uri, "/cgi/") == _uri) {
 							_is_CGI = 1;
+							query_str = strchrnul(_uri, '?');
+							if(*query_str == '?') {
+								*query_str = '\0';
+								query_str++;
+							}
 							_envp[0] = malloc_string("REQUEST_URI=%s", 
-								_uri + 4); /* skip the '/cgi' */
+								_uri); /* skip the '/cgi' */
 							_envp[1] = malloc_string("REQUEST_METHOD=%s", 
 								_method);
-							_envp[2] = malloc_string("PATH_INFO=%s", _uri);
+							_envp[2] = malloc_string("PATH_INFO=%s", _uri + 4);
 							_envp[3] = malloc_string("SERVER_SOFTWARE=%s", 
 								"Liso/1.0");
 							_envp[4] = malloc_string("SERVER_NAME=%s", 
 								"lisod");
 							_envp[5] = malloc_string("SERVER_PORT=%d", 
-								_http_port);
-							envp_count = 6;
+								isHTTP ? _http_port : _https_port);
+							_envp[6] = malloc_string("GATEWAY_INTERFACE=%s",
+								"CGI/1.1");
+							_envp[7] = malloc_string("SERVER_PROTOCOL=%s", 
+								"HTTP/1.1");
+							_envp[8] = malloc_string("SCRIPT_NAME=%s", "/cgi");
+							_envp[9] = malloc_string("QUERY_STRING=%s", 
+								query_str);
+							envp_count = 10;
 						}
+						/* convert method to lower case */
 						CONVERT_TO_LOWER(_method, i);
 					}
 					had_request_line = 1;
@@ -190,26 +233,53 @@ int HandleHTTP(char * buf, int * ori_buf_size, char * out_buf, int socket) {
 
 	if(state == STATE_CRLFCRLF) {
 		/* FOUND CRLF-CRLF */
-		_envp[envp_count++] = NULL; /* nul terminated */
-		/* convert to lower case */
-		CONVERT_TO_LOWER(_method, i);
 		/* Any URI starting with '/cgi/' will be handled by a single
 		 * command-line specified executable via a CGI interface */
+		 
+		/* for valid http packet, log the ip address & webbrowser */
+        if(is_set_browser)
+            msg_log("User-Agent", browser_info);
+        /* get and log the ip address & port */
+        peer_len = sizeof(struct sockaddr_in);
+        getpeername(socket, (struct sockaddr *) &peer_addr, &peer_len);
+        /* we focus on only ipv4, i.e. sin_familiy is AF_INET */
+        peer_port = ntohs(peer_addr.sin_port);
+        sprintf(addition_info, ":%d %s", peer_port, status_message);
+        inet_ntop(AF_INET, &peer_addr.sin_addr, ip_addr, TINY_BUF_SIZE);
+        /* Add remote addr */
+        if(_is_CGI)
+        	_envp[envp_count++] = malloc_string("REMOTE_ADDR=%s", ip_addr);
+        strcat(ip_addr, addition_info);
+        msg_log("IP", ip_addr);
+		/* end logging the ip address & webbrowser */
+		_envp[envp_count] = NULL; /* nul terminated */
+		 
 		if(!strcmp(_method, "post") && !has_content_len)
 			code = S_411_LENGTH_REQUIRED;
 		/* if it is a bad request, then return error msg */
-		if(code == S_200_OK && _is_CGI) {
+		if(code != S_200_OK) {
+			_is_CGI = 0;
+			*ori_buf_size = 0;
+			response_size = get_response(out_buf, _close_conn);
+		}
+		else if(_is_CGI) {
+			buf_size -= index;	
+			*ori_buf_size = buf_size;
+			if(buf_size > 0)
+				memmove(buf, buf + index, buf_size);
 			/* return the total length of packet */
-			return content_len + index;
+			return content_len;
 		}
 		else {
+			buf_size -= (index + content_len);			
+			*ori_buf_size = MAX(0, buf_size);
+			if(buf_size > 0)
+				memmove(buf, buf + index + content_len, buf_size);
 			response_size = get_response(out_buf, _close_conn);
 		}
 	} else {
 		/* Could not find CRLF-CRLF*/
-		response_size = 0;
-		error_log("Failed: Could not find CRLF-CRLF");
-		error_log(buf);
+		error_log("Failed: Could not find CRLF-CRLF, may not read all bytes");
 	}
 	return response_size;
 }
@@ -401,14 +471,30 @@ char * malloc_string(const char * format, ...) {
 	char * malloc_str;
 	va_list args;
 	va_start(args, format);	
-	vsnprintf(malloc_buf, SMALL_BUF_SIZE, format, args);
+	len = vsnprintf(malloc_buf, SMALL_BUF_SIZE - 1, format, args);
 	va_end(args);
-	len = strlen(malloc_buf);
+	if(len == SMALL_BUF_SIZE - 1)
+		malloc_buf[SMALL_BUF_SIZE - 1] = '\0';
 	malloc_str = malloc(len + 1);
 	if(malloc_str != NULL) {
-		strncpy(malloc_str, malloc_buf, len);
+		memcpy(malloc_str, malloc_buf, len);
 		malloc_str[len] = '\0';
 	}
 	return malloc_str;
+}
+
+int check_method(char * method) {
+	int i = 0;
+	while(method[i]) {
+		if(!((method[i] >= 'A' && method[i] <= 'Z') ||
+			(method[i] >= 'a' && method[i] <= 'z')))
+			return 0;
+		if(i >= 8) {
+			method[i] = '\0';
+			return 1;
+		}
+		i++;
+	}
+	return 1;
 }
 

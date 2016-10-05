@@ -46,7 +46,7 @@ run: clean lisod
 	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ../tmp/cgi/cgi_script.py ../tmp/grader.key ../tmp/grader.crt)
 
 run2: clean lisod
-	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ./flaskr/flaskr.py ../tmp/grader.key ../tmp/grader.crt)
+	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ./flaskr ./flaskr/flaskr.py ../tmp/grader.key ../tmp/grader.crt)
 
 run3: clean lisod
 	(./lisod $(HTTP) $(HTTPS) ../tmp/lisod0.log ../tmp/lisod.lock ../tmp/www ./flaskr/wsgi_wrapper.py ../tmp/grader.key ../tmp/grader.crt)
@@ -66,4 +66,4 @@ handin_%:
 	(make clean; git commit -a -m "handin"; git tag -d checkpoint-$*; git tag -a checkpoint-$* -m "handin"; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude *.py --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
 	
 handin:
-	(make clean; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)
+	(make clean; git commit -a -m "handin"; git tag -d checkpoint-3; git tag -a checkpoint-3 -m "handin"; cd ..; tar cvf yunfany.tar 15-441-project-1 --exclude test --exclude tmp --exclude parser_cp2 --exclude helper.txt)

@@ -4,10 +4,12 @@
 #define _REQUEST_HANDLER
 
 /* function prototypes */
-int HandleHTTP(char * buf, int * buf_size, char * out_buf, int socket);
+int HandleHTTP(char * buf, int * buf_size, char * out_buf, int socket, int isHTTP);
 int get_response(char * out_buf, int closeConn);
 int get_message(enum status code, char * msg);
 off_t get_body(int fd, char * out_buf, off_t size);
+/* check whether the method is valid */
+int check_method(char * method);
 
 struct type_map {
 	char surfix[TINY_BUF_SIZE];
@@ -28,6 +30,7 @@ extern char _www_root[SMALL_BUF_SIZE];
 extern void set_parsing_buf(char *buf, size_t siz);
 /* external from lisod.h */
 extern int _http_port;
+extern int _https_port;
 
 /* global variables that are referenced in yacc */
 char _token[SMALL_BUF_SIZE];

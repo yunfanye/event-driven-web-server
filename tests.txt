@@ -1,3 +1,8 @@
+/******************************************************testing https and cgi server**********************************************************/
+For HTTPS server, since we only add wrapper functions, everything is the same as HTTP server. To test those wrapper functions, we get a dns hostname on NO-IP, and add a dns entry to direct the hostname to the local computer. Plus, we sign a key and certificate for that hostname on 15441 CA server. Use the certificate and key, we can access the hostname using https.
+
+For CGI, we build a flask blog and wrap it using wsgi_wrapper. Tests confirm that every functionality runs well using the cgi. Also, we generate several bad request using telnet and python script, the server can respond properly.
+
 /**********************************************************testing http server***************************************************************/
 For valid requests, we use curl, wireshark, apache bench(HTTP/1.0), and siege(HTTP/1.1) to test the correctness and measure the performance of the server. Specifically, we repeatedly run siege -c 600 -r 600 -b <server/resource> tens of times, and, with no performance degradation, we can ensure the server can support a large amount of concurrency.
 

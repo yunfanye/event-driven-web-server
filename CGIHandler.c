@@ -14,7 +14,8 @@
 #include <unistd.h>
 #include "CGIHandler.h"
 
-int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd, char * envp[]) {
+int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd, 
+	char * envp[]) {
     /*************** BEGIN VARIABLE DECLARATIONS **************/
     pid_t pid;
     int stdin_pipe[2];
@@ -22,6 +23,9 @@ int CreatePipe(char * cgi_path, int * pipeInFd, int * pipeOutFd, char * envp[]) 
 	char* argv[2];
 	argv[0] = cgi_path;
 	argv[1] = NULL;
+	int i = 0;
+	while(envp[i])
+		printf("%s\n", envp[i++]);
     /*************** END VARIABLE DECLARATIONS **************/
 
     /*************** BEGIN PIPE **************/
@@ -118,77 +122,77 @@ void execve_error_handler()
     switch (errno)
     {
         case E2BIG:
-            fprintf(stderr, "The total number of bytes in the environment \
+            error_log("The total number of bytes in the environment \
 (envp) and argument list (argv) is too large.\n");
             return;
         case EACCES:
-            fprintf(stderr, "Execute permission is denied for the file or a \
+            error_log("Execute permission is denied for the file or a \
 script or ELF interpreter.\n");
             return;
         case EFAULT:
-            fprintf(stderr, "filename points outside your accessible address \
+            error_log("filename points outside your accessible address \
 space.\n");
             return;
         case EINVAL:
-            fprintf(stderr, "An ELF executable had more than one PT_INTERP \
+            error_log("An ELF executable had more than one PT_INTERP \
 segment (i.e., tried to name more than one \
 interpreter).\n");
             return;
         case EIO:
-            fprintf(stderr, "An I/O error occurred.\n");
+            error_log("An I/O error occurred.\n");
             return;
         case EISDIR:
-            fprintf(stderr, "An ELF interpreter was a directory.\n");
+            error_log("An ELF interpreter was a directory.\n");
             return;
         case ELIBBAD:
-            fprintf(stderr, "An ELF interpreter was not in a recognised \
+            error_log("An ELF interpreter was not in a recognised \
 format.\n");
             return;
         case ELOOP:
-            fprintf(stderr, "Too many symbolic links were encountered in \
+            error_log("Too many symbolic links were encountered in \
 resolving filename or the name of a script \
 or ELF interpreter.\n");
             return;
         case EMFILE:
-            fprintf(stderr, "The process has the maximum number of files \
+            error_log("The process has the maximum number of files \
 open.\n");
             return;
         case ENAMETOOLONG:
-            fprintf(stderr, "filename is too long.\n");
+            error_log("filename is too long.\n");
             return;
         case ENFILE:
-            fprintf(stderr, "The system limit on the total number of open \
+            error_log("The system limit on the total number of open \
 files has been reached.\n");
             return;
         case ENOENT:
-            fprintf(stderr, "The file filename or a script or ELF interpreter \
+            error_log("The file filename or a script or ELF interpreter \
 does not exist, or a shared library needed for \
 file or interpreter cannot be found.\n");
             return;
         case ENOEXEC:
-            fprintf(stderr, "An executable is not in a recognised format, is \
+            error_log("An executable is not in a recognised format, is \
 for the wrong architecture, or has some other \
 format error that means it cannot be \
 executed.\n");
             return;
         case ENOMEM:
-            fprintf(stderr, "Insufficient kernel memory was available.\n");
+            error_log("Insufficient kernel memory was available.\n");
             return;
         case ENOTDIR:
-            fprintf(stderr, "A component of the path prefix of filename or a \
+            error_log("A component of the path prefix of filename or a \
 script or ELF interpreter is not a directory.\n");
             return;
         case EPERM:
-            fprintf(stderr, "The file system is mounted nosuid, the user is \
+            error_log("The file system is mounted nosuid, the user is \
 not the superuser, and the file has an SUID or \
 SGID bit set.\n");
             return;
         case ETXTBSY:
-            fprintf(stderr, "Executable was open for writing by one or more \
+            error_log("Executable was open for writing by one or more \
 processes.\n");
             return;
         default:
-            fprintf(stderr, "Unkown error occurred with execve().\n");
+            error_log("Unkown error occurred with execve().\n");
             return;
     }
 }

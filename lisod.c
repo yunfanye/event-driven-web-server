@@ -33,7 +33,6 @@
 int main(int argc, char* argv[])
 {
 	int i, fileNameLen;
-	int https_port;	
 	char * log_file, * log_dir, * lock_file, * cgi_path, * ssl_key, * ssl_crt;
 	int lock_fd;
     int client_sock;
@@ -65,6 +64,8 @@ int main(int argc, char* argv[])
 	http_sock = 0;
 	https_sock = 0;
 	log_fd = 0;
+	lock_fd = 0;
+	ssl_context = NULL;
     _envp[0] = NULL;
     /* read the command line, init config */
     if(argc < 9) {
@@ -75,13 +76,13 @@ int main(int argc, char* argv[])
     	/* since only http port is used currently, other parameters 
     	 * are simply ignored */
     	_http_port = atoi(argv[1]);
-    	https_port = atoi(argv[2]);
+    	_https_port = atoi(argv[2]);
     	/* check the input, beyond the range, the port is invalid */
     	if(_http_port > 65535 || _http_port < 0)
     		error_exit("HTTP port number invalid!");
-    	if(https_port > 65535 || https_port < 0) 
+    	if(_https_port > 65535 || _https_port < 0) 
     		error_exit("HTTPS port number invalid!");
-    	if(https_port == _http_port)
+    	if(_https_port == _http_port)
     		error_exit("HTTP port number should not equal to that of HTTPS");
     	/* get log file */
     	log_file = argv[3];
@@ -114,7 +115,7 @@ int main(int argc, char* argv[])
     }
     
     /* open log file */
-    if((log_fd = open(log_file, (O_RDWR | O_CREAT))) < 0) 
+    if((log_fd = open(log_file, (O_RDWR | O_CREAT), 0640)) < 0) 
     	error_exit("Cannot open log file.");
 #endif
     	
@@ -131,12 +132,12 @@ int main(int argc, char* argv[])
 
 	/* initialize http */
 	mHTTP_init(_http_port);
-	mSSL_init(https_port, ssl_key, ssl_crt);
+	mSSL_init(_https_port, ssl_key, ssl_crt);
 	
 
     /* finally, loop waiting for input and then write it back */   
     /* not really needed currently, choose a random number*/
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 1;
     timeout.tv_usec = 0;
     while (1)
     {
@@ -167,19 +168,23 @@ int main(int argc, char* argv[])
     	while(loopFdWrap) {
     		nfds = MAX(nfds, loopFdWrap -> fd);
     		FD_SET(loopFdWrap -> fd, &writeset); 
+    		if(loopFdWrap -> isCGI) {
+    			nfds = MAX(nfds, loopFdWrap -> pipeFd);
+    			FD_SET(loopFdWrap -> pipeFd, &readset);
+    		}
     		loopFdWrap = loopFdWrap -> next;	
     	} 
     	/* nfds is the highest fd plus one */
     	nfds++;
     	/* begin select */
     	if((selectRet = select(nfds, &readset, &writeset, &exceptset, 
-    		&timeout)) > 0) {
+    		&timeout)) >= 0) {
     		/* HTTP: Accept connection, use wrapper func to log errors */
     	    if(FD_ISSET(http_sock, &readset)) {
     	    	/* establish new client socket */
     	    	cli_size = sizeof(cli_addr);
 				if ((client_sock = Accept(http_sock, 
-					(struct sockaddr *) &cli_addr, &cli_size)) != -1) {					
+					(struct sockaddr *) &cli_addr, &cli_size)) != -1) {	
        				/* add new client fd to read list */
        				ADD_LINKEDLIST_NODE(readHead, client_sock);
     				readHead -> bufSize = 0;
@@ -222,8 +227,7 @@ int main(int argc, char* argv[])
     	    		mClose_socket(loopFdWrap);
     				REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, readHead);
     				continue;
-    			}
-    				
+    			}				
     			if(FD_ISSET(loopFdWrap -> fd, &readset)) {
     				/* TODO: more specific error handling */
     				readlen = BUF_SIZE - loopFdWrap -> bufSize;
@@ -232,69 +236,11 @@ int main(int argc, char* argv[])
     					/* append the bytes to loop's buf */
     					memcpy(loopFdWrap -> buf + loopFdWrap -> bufSize, 
     						buf, readret);
-    					loopFdWrap -> bufSize += readret;    					
-       					responseSize = HandleHTTP(loopFdWrap -> buf,
-       							&loopFdWrap -> bufSize, buf, loopFdWrap -> fd);      					
-    					if(responseSize > 0) {
-    						/* request processed; then respond, 
-							 * i.e. keep it in write buf and
-		   					 * add new client fd to write list */
-		   					ADD_LINKEDLIST_NODE(writeHead, 
-		   						loopFdWrap -> fd);
-		   					writeHead -> ssl_fd = loopFdWrap -> ssl_fd;
-		   					writeHead -> prot = loopFdWrap -> prot;
-		   					writeHead -> toClose = _close_conn;
-							/* a new write */
-		   					FD_SET(writeHead -> fd, &writeValid);
-    						if(!_is_CGI) {
-    							writeHead -> isCGI = 0;
-		   						memcpy(writeHead -> buf, buf, responseSize);
-								writeHead -> bufSize = responseSize;
-								/* for big files, write the remaining 
-								 * when can write */
-								writeHead -> has_remain = _has_remain_bytes;
-								if(_has_remain_bytes) {
-									writeHead -> remain_bytes = _remain_bytes;
-									writeHead -> offset = _file_offset;
-									strcpy(writeHead -> path, _www_path);
-								}		
-								loopFdWrap -> bufSize = 0;
-    						}
-    						else {
-    							CreatePipe(cgi_path, &pipeInFd, &pipeOutFd, _envp);
-    							writeHead -> pipeFd = pipeOutFd;
-    							writeHead -> isCGI = 1;
-    							if(responseSize > loopFdWrap -> bufSize) {
-    								loopFdWrap -> has_remain = 1;
-    								loopFdWrap -> remain_bytes = responseSize
-    									- loopFdWrap -> bufSize;
-    								WriteToPipe(pipeInFd, buf, 
-    									loopFdWrap -> bufSize);
-    								loopFdWrap -> bufSize = 0;
-    								loopFdWrap -> isCGI = 1;
-    								loopFdWrap -> pipeFd = pipeInFd;
-    							}
-    							else {
-    								loopFdWrap -> has_remain = 0;
-    								WriteToPipe(pipeInFd, buf, responseSize);
-    								loopFdWrap -> bufSize -= responseSize;
-    								if(loopFdWrap -> bufSize > 0) {
-    									memmove(loopFdWrap -> buf, 
-    										loopFdWrap -> buf + responseSize,
-    										loopFdWrap -> bufSize);
-    								}
-    								close_file(pipeInFd);
-    							}
-    						}
-    					}
-    					free_strings(_envp);    					
-    					/* proceed next node */
-    					loopFdWrap = loopFdWrap -> next;    					
-										
+    					loopFdWrap -> bufSize += readret; 
     				}
     				else {
 #ifdef DEBUG
-    	    			fprintf(stdout, "recv failed: %s.\n", readret == -1? 
+    	    			fprintf(stdout, "recv failed: %s.\n", readret == -1?
     	    				strerror(errno) : "peer shut down");
 #endif
     					/* if interrupted, read next time; otherwise, release 
@@ -309,14 +255,87 @@ int main(int argc, char* argv[])
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
 								readHead);		
            				}
-           				else
+           				else {
+           					/* prevFd used to assist deletion */
+           					prevFdWrap = loopFdWrap;
            					loopFdWrap = loopFdWrap -> next;
+           				}
+           				continue;
     				}
     			}
-    			else {
+    			else if (loopFdWrap -> bufSize == 0){
     				prevFdWrap = loopFdWrap;
     				loopFdWrap = loopFdWrap -> next;
+    				continue;
     			}
+    			if(loopFdWrap -> bufSize > 0 && !FD_ISSET(loopFdWrap -> fd,
+    				&writeValid)) {
+				   	responseSize = HandleHTTP(loopFdWrap -> buf,
+						&loopFdWrap -> bufSize, buf, loopFdWrap -> fd,
+						loopFdWrap -> prot == HTTP);      					
+					if(responseSize > 0 || _is_CGI) {
+						/* request processed; then respond, 
+						 * i.e. keep it in write buf and
+	   					 * add new client fd to write list */
+	   					ADD_LINKEDLIST_NODE(writeHead, 
+	   						loopFdWrap -> fd);
+	   					writeHead -> ssl_fd = loopFdWrap -> ssl_fd;
+	   					writeHead -> prot = loopFdWrap -> prot;
+	   					writeHead -> toClose = _close_conn;
+						/* a new write */
+	   					FD_SET(writeHead -> fd, &writeValid);
+						if(!_is_CGI) {
+							writeHead -> isCGI = 0;
+	   						memcpy(writeHead -> buf, buf, responseSize);
+							writeHead -> bufSize = responseSize;
+							/* for big files, write the remaining 
+							 * when can write */
+							writeHead -> has_remain = _has_remain_bytes;
+							if(_has_remain_bytes) {
+								writeHead -> remain_bytes = _remain_bytes;
+								writeHead -> offset = _file_offset;
+								strcpy(writeHead -> path, _www_path);
+							}
+						}
+						else {
+							CreatePipe(cgi_path, &pipeInFd, &pipeOutFd, _envp);
+							writeHead -> pipeFd = pipeOutFd;
+							writeHead -> isCGI = 1;
+							writeHead -> bufSize = 0;
+							writeHead -> has_remain = 0;
+							if(responseSize > loopFdWrap -> bufSize) {
+								loopFdWrap -> has_remain = 1;
+								loopFdWrap -> remain_bytes = responseSize
+									- loopFdWrap -> bufSize;
+								if(loopFdWrap -> bufSize > 0)
+									WriteToPipe(pipeInFd, loopFdWrap -> buf, 
+										loopFdWrap -> bufSize);
+								loopFdWrap -> bufSize = 0;
+								loopFdWrap -> isCGI = 1;
+								loopFdWrap -> pipeFd = pipeInFd;
+							}
+							else {
+								loopFdWrap -> has_remain = 0;
+								if(responseSize > 0) {
+									WriteToPipe(pipeInFd, loopFdWrap -> buf,
+										responseSize);
+									loopFdWrap -> bufSize -= responseSize;
+								}
+								if(loopFdWrap -> bufSize > 0) {
+									memmove(loopFdWrap -> buf, 
+										loopFdWrap -> buf + responseSize,
+										loopFdWrap -> bufSize);
+								}
+								close_file(pipeInFd);
+								loopFdWrap -> isCGI = 0;
+							}
+							free_strings(_envp); 
+						}
+					}
+				}  					   					
+				/* proceed next node */				
+				prevFdWrap = loopFdWrap;
+				loopFdWrap = loopFdWrap -> next;  
     		}
     		
     		/* search for available WRITE fd in write list */
@@ -327,17 +346,35 @@ int main(int argc, char* argv[])
     				REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, writeHead);
     				continue;
     			}
-    			if(FD_ISSET(loopFdWrap -> fd, &writeset)) {
-#ifdef DEBUG
-    	    		fprintf(stdout, "Begin writing.\n");
-#endif 				
-					if(loopFdWrap -> isCGI) {
-						/* load content from pipe */
-						loopFdWrap -> bufSize = ReadFromPipe(
-							loopFdWrap -> pipeFd, loopFdWrap -> buf, BUF_SIZE);
-						if(loopFdWrap -> bufSize == 0)
-							continue;
-					} 				
+				if(loopFdWrap -> isCGI && FD_ISSET(loopFdWrap -> pipeFd, 
+					&readset)) {
+					/* load content from pipe */
+					readret = ReadFromPipe(
+						loopFdWrap -> pipeFd, loopFdWrap -> buf, BUF_SIZE);
+					if(readret > 0) {
+						loopFdWrap -> bufSize = readret;
+					}
+					else if(readret < 0) {
+						/* Error */
+						loopFdWrap -> isCGI = 0;
+						close_file(loopFdWrap -> fd);
+						/* if no write buf, notify the client, and close */
+						shutdown(loopFdWrap -> fd, SHUT_WR);
+						FD_CLR(loopFdWrap -> fd, &readValid);
+						FD_CLR(loopFdWrap -> fd, &writeValid);
+						REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap,
+							writeHead);
+						continue;
+					}
+					else {
+						/* EOF */
+						loopFdWrap -> isCGI = 0;
+						close_file(loopFdWrap -> fd);
+					}					
+				} 
+     			
+    			if(FD_ISSET(loopFdWrap -> fd, &writeset) &&
+    				loopFdWrap -> bufSize > 0) {							
     				/* TODO: more specific error handling */
 					if ((writeret = mSend(loopFdWrap -> fd, loopFdWrap->ssl_fd,
 						loopFdWrap -> buf, loopFdWrap -> bufSize, 
@@ -349,6 +386,7 @@ int main(int argc, char* argv[])
            					 * of memcpy */
            					memmove(loopFdWrap -> buf, (loopFdWrap -> buf + 
            						writeret), loopFdWrap -> bufSize);
+           					prevFdWrap = loopFdWrap;
            					loopFdWrap = loopFdWrap -> next; 
            				}
            				else {
@@ -361,7 +399,7 @@ int main(int argc, char* argv[])
     	    					strerror(errno));
 #endif
            					if(errno != EINTR) {
-           						/* send a fin to notify the client, if error */
+           						/* send fin to notify the client, if error */
            						shutdown(loopFdWrap -> fd, SHUT_WR);
            						FD_CLR(loopFdWrap -> fd, &readValid);
            						FD_CLR(loopFdWrap -> fd, &writeValid);
@@ -370,8 +408,10 @@ int main(int argc, char* argv[])
 								REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap,
 									writeHead);
            					}
-           					else
+           					else {
+           						prevFdWrap = loopFdWrap;
            						loopFdWrap = loopFdWrap -> next; 
+           					}
            				}
            			}
            			else {
@@ -392,7 +432,7 @@ int main(int argc, char* argv[])
 									SEEK_SET);
 								read_remain_len = 
 									MIN(loopFdWrap -> remain_bytes, BUF_SIZE);
-								if(get_body(write_remain_fd, loopFdWrap -> buf, 
+								if(get_body(write_remain_fd, loopFdWrap -> buf,
 									read_remain_len) == read_remain_len) {
 									reload_success = 1;
 									loopFdWrap -> bufSize = read_remain_len;
@@ -405,10 +445,12 @@ int main(int argc, char* argv[])
 								/* close immediately to prevent being limited
 								 * by slow client*/
 								close_file(write_remain_fd);
-							}													
+							}
            				}
-           				if(reload_success)
+           				if(reload_success) {
+           					prevFdWrap = loopFdWrap;
            					loopFdWrap = loopFdWrap -> next; 
+           				}
            				else {
            					/* send a fin to notify the client, 
            					 * only needed for HTTP/1.0 */
@@ -417,7 +459,7 @@ int main(int argc, char* argv[])
 							FD_CLR(loopFdWrap -> fd, &writeValid);
 							REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, 
 								writeHead);	
-						}					
+						}		
            			}
     			}
     			else {
@@ -485,8 +527,7 @@ sighandler_t Signal(int signum, sighandler_t handler)
     action.sa_flags = SA_RESTART; /* Restart syscalls if possible */
 
     if (sigaction(signum, &action, &old_action) < 0) {
-    	fprintf(stderr, "Failed to setup signal handler: %s.\n",
-    		strerror(errno));
+    	error_log("Failed to setup signal handler.\n");
     }
     return (old_action.sa_handler);
 }
@@ -497,14 +538,18 @@ void error_exit(char * msg) {
 }
 
 void liso_shutdown() {
-	if(ssl_context != NULL)
-		SSL_CTX_free(ssl_context);
 	if(http_sock > 0)
 		close_socket(http_sock);
 	if(https_sock > 0)
 		close_socket(https_sock);
 	if(log_fd > 0)
 		close(log_fd);
+	if(lock_fd > 0) {
+		lockf(lock_fd, F_ULOCK, 0);
+		close(lock_fd);
+	}
+	if(ssl_context != NULL)
+		SSL_CTX_free(ssl_context);
 	exit(EXIT_FAILURE);
 }
 
@@ -524,6 +569,7 @@ void signal_handler(int sig) {
 				break;          
 		case SIGTERM:
 				/* finalize and shutdown the server */
+				error_log("SIGTERM caught, program exits");
 				liso_shutdown();
 				break;    
 		default:
@@ -533,7 +579,7 @@ void signal_handler(int sig) {
 }
 
 int daemonize(char* lock_file) {
-	int i, pid, lock_fd;
+	int i, pid;
 	char pid_str[TINY_BUF_SIZE];
     /* daemonizing */
     pid = fork();
@@ -711,7 +757,7 @@ ssize_t mSend(int sockfd, SSL * ssl_fd, const void * buf, size_t writelen,
 
 void free_strings(char ** envp) {
 	int i = 0;
-	while(envp[i] != NULL) {
+	while(envp[i] != NULL && i < ENVP_SIZE) {
 		free(envp[i]);
 		envp[i] = NULL;
 		i++;

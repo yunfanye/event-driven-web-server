@@ -1,3 +1,6 @@
+/*******************************************************https and cgi server*****************************************************************/
+1. The server does not release persistent connections, which may drain the resources.
+
 /***********************************************************http server**********************************************************************/
 1. It is possible that malloc will return NULL in cases that there is no enough memory. In this case, we should return a 501 Internal Server Error response. But current server just ignores this posibility.
 2. Since the server employs a write-on-full-buffer policy (as required), it is possible that a 200 OK message was sent while the remaining data (the amount that cannot be contained in a buffer) cannot be sent (file moved or no memory), in which cases the 200 OK message cannot be recalled and the client might get confused.

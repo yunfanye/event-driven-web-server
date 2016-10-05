@@ -8,6 +8,8 @@
 /* remove and free a wrap node from the linked list
  * prevFdWrap == NULL only if loopFdWrap == head */	
 #define REMOVE_LINKEDLIST_NODE(loopFdWrap, prevFdWrap, head)			\
+	if(loopFdWrap -> isCGI)												\
+		close_file(loopFdWrap -> pipeFd);								\
 	if(prevFdWrap) {													\
 		prevFdWrap -> next = loopFdWrap -> next;						\
 		free(loopFdWrap);												\
@@ -87,13 +89,13 @@ void sigint_handler(int sig);
 /* global variables */
 static int http_sock, https_sock;
 SSL_CTX *ssl_context;
-
+static int lock_fd;
 
 /* external reference by requestHandler.c */
 char _www_root[SMALL_BUF_SIZE];
 
 /* external referenced by CGIHandler.c */
-int _http_port;
+int _http_port, _https_port;
 
 /* external reference from requestHandler.c */
 extern char _www_path[SMALL_BUF_SIZE];
